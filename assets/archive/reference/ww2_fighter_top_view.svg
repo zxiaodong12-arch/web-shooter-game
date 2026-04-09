@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="906" viewBox="0 0 1200 906" role="img" aria-label="WWII aircraft engineering top view">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5edda"/>
+      <stop offset="100%" stop-color="#efe4cf"/>
+    </linearGradient>
+    <filter id="softNoise" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.05"/>
+      </feComponentTransfer>
+    </filter>
+    <style>
+      .guide { stroke: #938b7e; stroke-width: 1.4; fill: none; opacity: 0.75; }
+      .frame { stroke: #b7aea1; stroke-width: 1.2; fill: none; opacity: 0.9; }
+      .body { stroke: #2d2a27; stroke-width: 3.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .fine { stroke: #4b4640; stroke-width: 1.1; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0.9; }
+      .rib { stroke: #6a655e; stroke-width: 0.85; fill: none; opacity: 0.55; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="906" fill="url(#paper)"/>
+  <rect width="1200" height="906" filter="url(#softNoise)" opacity="0.28"/>
+
+  <g transform="translate(600,453)">
+    <!-- construction frame -->
+    <line class="frame" x1="0" y1="-430" x2="0" y2="366"/>
+    <line class="frame" x1="-600" y1="0" x2="600" y2="0"/>
+    <rect class="frame" x="-430" y="-352" width="860" height="704"/>
+    <rect class="frame" x="-118" y="-412" width="236" height="768"/>
+    <line class="frame" x1="-610" y1="-118" x2="610" y2="-118"/>
+
+    <!-- main outer contour -->
+    <path
+      class="body"
+      d="
+        M 0,-420
+        C -18,-416 -34,-404 -44,-382
+        C -56,-356 -58,-320 -54,-292
+        C -48,-252 -62,-222 -102,-196
+        C -156,-162 -248,-136 -362,-104
+        C -454,-78 -540,-52 -590,-24
+        C -608,-14 -608,10 -590,20
+        C -540,48 -454,74 -362,100
+        C -250,132 -158,158 -104,194
+        C -64,220 -48,252 -42,292
+        C -38,326 -30,350 -18,368
+        C -10,380 -4,388 0,392
+        C 4,388 10,380 18,368
+        C 30,350 38,326 42,292
+        C 48,252 64,220 104,194
+        C 158,158 250,132 362,100
+        C 454,74 540,48 590,20
+        C 608,10 608,-14 590,-24
+        C 540,-52 454,-78 362,-104
+        C 248,-136 156,-162 102,-196
+        C 62,-222 48,-252 54,-292
+        C 58,-320 56,-356 44,-382
+        C 34,-404 18,-416 0,-420
+        Z"
+    />
+
+    <!-- fuselage center contour -->
+    <path
+      class="body"
+      d="
+        M 0,-432
+        C -14,-428 -24,-416 -30,-394
+        C -36,-370 -34,-332 -28,-290
+        C -22,-244 -20,-180 -20,-108
+        L -20,232
+        C -20,276 -12,318 0,354
+        C 12,318 20,276 20,232
+        L 20,-108
+        C 20,-180 22,-244 28,-290
+        C 34,-332 36,-370 30,-394
+        C 24,-416 14,-428 0,-432
+        Z"
+    />
+
+    <!-- canopy and cockpit -->
+    <path class="fine" d="M -18,-210 C -18,-254 -10,-286 0,-304 C 10,-286 18,-254 18,-210 C 18,-166 10,-132 0,-114 C -10,-132 -18,-166 -18,-210 Z"/>
+    <path class="fine" d="M -15,-88 C -15,-120 -8,-144 0,-156 C 8,-144 15,-120 15,-88 C 15,-56 8,-34 0,-22 C -8,-34 -15,-56 -15,-88 Z"/>
+    <line class="fine" x1="0" y1="-316" x2="0" y2="-18"/>
+
+    <!-- wing root engine fairing style bulges to match reference feel -->
+    <path class="fine" d="M -104,-176 C -96,-212 -74,-236 -40,-248"/>
+    <path class="fine" d="M 104,-176 C 96,-212 74,-236 40,-248"/>
+    <path class="fine" d="M -108,-44 C -94,-90 -70,-120 -34,-132"/>
+    <path class="fine" d="M 108,-44 C 94,-90 70,-120 34,-132"/>
+
+    <!-- tailplane -->
+    <path
+      class="body"
+      d="
+        M -148,286
+        C -104,272 -54,266 0,266
+        C 54,266 104,272 148,286
+        C 130,308 106,326 70,340
+        C 46,348 22,352 0,354
+        C -22,352 -46,348 -70,340
+        C -106,326 -130,308 -148,286
+        Z"
+    />
+
+    <!-- fin and rudder -->
+    <path class="body" d="M -10,214 L 10,214 L 16,356 L -16,356 Z"/>
+
+    <!-- span and structure lines -->
+    <line class="guide" x1="-596" y1="0" x2="596" y2="0"/>
+    <line class="guide" x1="0" y1="-430" x2="0" y2="356"/>
+    <path class="guide" d="M -540,22 C -382,-8 -184,-26 0,-28 C 184,-26 382,-8 540,22"/>
+    <path class="guide" d="M -508,66 C -340,102 -176,126 0,132 C 176,126 340,102 508,66"/>
+    <path class="guide" d="M -476,-56 C -320,-90 -164,-112 0,-118 C 164,-112 320,-90 476,-56"/>
+
+    <!-- wing rib hints -->
+    <path class="rib" d="M -528,-40 C -488,-22 -448,-8 -402,6"/>
+    <path class="rib" d="M -468,-64 C -430,-42 -392,-24 -344,-6"/>
+    <path class="rib" d="M -404,-84 C -360,-60 -316,-40 -266,-22"/>
+    <path class="rib" d="M -332,-104 C -286,-80 -236,-58 -180,-38"/>
+    <path class="rib" d="M -248,-126 C -204,-104 -154,-84 -102,-66"/>
+    <path class="rib" d="M 528,-40 C 488,-22 448,-8 402,6"/>
+    <path class="rib" d="M 468,-64 C 430,-42 392,-24 344,-6"/>
+    <path class="rib" d="M 404,-84 C 360,-60 316,-40 266,-22"/>
+    <path class="rib" d="M 332,-104 C 286,-80 236,-58 180,-38"/>
+    <path class="rib" d="M 248,-126 C 204,-104 154,-84 102,-66"/>
+
+    <!-- dimensions -->
+    <line class="frame" x1="-590" y1="-12" x2="-590" y2="20"/>
+    <line class="frame" x1="590" y1="-12" x2="590" y2="20"/>
+    <line class="frame" x1="-430" y1="-352" x2="-430" y2="-392"/>
+    <line class="frame" x1="430" y1="-352" x2="430" y2="-392"/>
+    <line class="frame" x1="-118" y1="-412" x2="-160" y2="-412"/>
+    <line class="frame" x1="118" y1="-412" x2="160" y2="-412"/>
+  </g>
+</svg>

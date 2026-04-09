@@ -1,0 +1,349 @@
+Original prompt: Build and iterate a playable web game in this workspace, validating changes with a Playwright loop. Then user asked: 做一个简单的射击游戏.
+
+- Created fresh project folder: /System/Volumes/Data/data/RD/web-shooter-game
+- Implemented initial shooter game with canvas, start flow, movement, shooting, enemy spawning, scoring, win/lose states, restart, fullscreen toggle.
+- Exposed window.render_game_to_text and window.advanceTime(ms) for deterministic testing.
+- Next: run local server + Playwright client loop, inspect screenshots and logs, then iterate on gameplay bugs.
+- Validation issue found: Space key can re-trigger Start button due focus/default button behavior, causing unintended reset during automated play.
+- Plan: hide/disable start button once game starts, prevent default on gameplay keys, and rerun with longer action burst for state progression checks.
+- Applied fix in game.js: hide/disable start button after game starts and focus canvas to prevent spacebar from re-triggering button clicks.
+- Added keydown preventDefault for ArrowLeft/ArrowRight/Space to keep controls deterministic during automation.
+- Playwright validation run2 passed: movement, enemy spawn, shooting, scoring, and game-over transition all observed in screenshots/state JSON with no console errors.
+- Playwright validation run3 passed: lose state followed by Enter restart returns to playing mode with lives reset and controls active.
+
+TODO / suggestions for next agent:
+- Add optional difficulty selection and a short invulnerability window after player hit for smoother early gameplay.
+- Consider a tiny explosion effect and hit flash for stronger feedback when bullets connect.
+- Add audio toggle and simple SFX if desired.
+- Fixed CORS-on-load issue for file:// usage by changing index.html script tag from type="module" to classic script include.
+- Added explosion particle system in game.js for enemy-hit and player-hit events.
+- Explosion effect tuning: larger particles, longer lifetime, lower drift speed, plus central flash for better readability.
+- Updated render_game_to_text to include explosions.active and sample particle data for automation visibility.
+- Verified with Playwright loop: run-explosion and run-explosion-hit-2 show visible particle bursts in screenshots and non-zero explosion state in JSON.
+- Added shockwave ring effect (`state.shockwaves`) triggered on enemy hit and player hit.
+- Added enemy death shake: enemies now enter short `dying` phase with jitter/fade before removal.
+- Exposed shockwave state in render_game_to_text (`shockwaves.active` + samples).
+- Tweaked spawn behavior to more often appear near player, improving action density.
+- Replaced player sprite with propeller fighter-plane silhouette (nose, fuselage, wings, tail, spinning propeller).
+- Kept collision box and controls unchanged; verified rendering/controls with Playwright run-plane.
+- Redesigned player sprite to a Zero-style propeller fighter silhouette with olive paint, tapered wings, canopy, tailplane, roundel accents, and animated dual-blade propeller.
+- Verified in Playwright run-zero-style screenshots.
+- Upgraded Zero-style player design toward semi-realistic look: layered wing/fuselage gradients, canopy shading, panel-line details, wing roundels, soft shadow, and propeller blur disk.
+- Added slight banking response based on horizontal velocity for more natural aircraft motion.
+- Verified visuals and gameplay with Playwright run-zero-realistic.
+- Added project visual design spec and implementation checklist: VISUAL_SPEC.md.
+- Implemented Phase B enemy visual pass in game.js:
+  - Enemy style variants (red/amber), top highlight strip + bottom shadow band.
+  - Hit flash timer/state and flash overlay integration.
+  - Death-state readability improvements: shake + scale shift + bright pulse overlay.
+  - render_game_to_text enemy payload now includes dying/hitFlash fields.
+- Playwright validation runs: run-phase-b and run-phase-b-focus generated stable gameplay with updated enemy rendering and no console error files.
+- Replaced procedural player aircraft with imported image asset `assets/20260330113143_4_43.jpg`.
+- Added client-side near-white background keying so the imported aircraft can render cleanly over the game sky.
+- Verified imported aircraft rendering with Playwright run `output/run-imported-plane`.
+- Updated shooting behavior so bullets fire from both wings instead of the fuselage center.
+- Verified wing-mounted bullet spawn with Playwright run `output/run-wing-guns`.
+- Tightened imported plane background keying with two-stage near-white removal and low-alpha fringe suppression.
+- Verified cleaner edge treatment with Playwright run `output/run-imported-plane-clean`.
+- Generated pre-keyed transparent plane asset `assets/player_plane_transparent.png` from the provided JPG.
+- Switched player rendering to use the transparent PNG directly, removing dependence on runtime background keying.
+- Verified transparent asset integration with Playwright run `output/run-transparent-plane`.
+- Swapped player aircraft source to `assets/20260330134524_5_43.png`, exported as transparent `assets/player_plane_transparent_v2.png`, and updated cache-busted asset/script references.
+- Improved transparency extraction for the white aircraft by switching to corner-connected background removal, producing `assets/player_plane_transparent_v3.png`.
+- Replaced enemy rendering with imported aircraft asset `assets/20260330140054_6_43.png`, exported as `assets/enemy_plane_transparent.png`, with procedural enemy art kept as fallback.
+- Verified enemy aircraft rendering with Playwright run `output/run-enemy-plane`.
+- Flipped enemy aircraft orientation to face downward toward the player and reduced enemy sprite render scale for better readability.
+- Verified flipped/smaller enemy rendering with Playwright run `output/run-enemy-plane-small-flip`.
+- Fixed enemy death/hit flash artifact in imported-sprite path: replaced rectangular white overlay with a second sprite draw in `screen` blend mode so flash follows the aircraft silhouette instead of showing a white box.
+- Verified with Playwright run `output/run-enemy-flash-fix`; latest screenshot no longer shows the white square during enemy explosion/flash.
+- Gameplay polish pass:
+  - Added enemy movement profiles (`straight`, `sway`, `dive`) so incoming targets feel less static.
+  - Added wing muzzle flashes, bullet trails, and a short hit-stop timer on confirmed enemy hits for stronger firing/impact feedback.
+  - Upgraded HUD into a cockpit-style status panel with score progress meter; refreshed page chrome/button styling for a more cohesive look.
+  - Extended render_game_to_text with `movementType`, `muzzleFlashes`, and `timers.hitStop`.
+- Validation:
+  - `output/run-gameplay-pass-1` confirmed movement/combat still works with the new enemy behavior and HUD.
+  - `output/run-gameplay-restart` confirmed restart flow still resets back to playable state.
+  - `output/run-feedback-close` confirmed bullet trails are visible and the refreshed HUD renders correctly.
+- Cache bust updated in index.html so browsers pick up the new JS/CSS without stale assets.
+- Content pass:
+  - Added elite enemies with higher HP, larger presentation, and bonus score.
+  - Added collectible powerups: `shield` absorbs a hit; `spread` temporarily adds wider multi-shot fire.
+  - Added HUD status badges plus a visual shield ring around the player aircraft.
+  - Added lightweight debug hooks `window.debugSpawnEnemy(kind)` and `window.debugSpawnPowerup(type)` to make Playwright/manual verification of random content reliable.
+- Validation:
+  - `output/run-elite-pass` and `output/run-powerup-pass` confirmed no new console error files and that the core play loop still runs with the new systems enabled.
+  - Playwright debug evaluation confirmed `elite: true` enemies and both `shield` / `spread` powerups appear in `render_game_to_text` state.
+- Combat escalation pass:
+  - Added enemy-fired bullets so standard enemies now create dodge pressure.
+  - Added a boss phase: once score reaches 15, regular spawns stop and a large boss enters with its own HP bar and three-shot spread attack.
+  - Victory now requires the boss to be defeated; boss defeat grants the final score bump.
+  - Extended render_game_to_text with `enemyBullets` and boss state flags.
+- Validation:
+  - `output/run-enemy-fire-pass` confirmed enemy bullets appear in state and core gameplay still runs.
+  - `output/run-boss-pass` confirmed the longer combat loop still runs without new error files.
+  - Playwright debug verification produced a clean boss scene with boss health bar, active shield badge, and boss projectile spread visible on screen.
+- Replaced elite and boss visuals with new provided assets:
+  - elite uses `assets/elite_plane_transparent.png` generated from `20260330144344_7_43.png`
+  - boss uses `assets/boss_plane_transparent.png` generated from `20260330144345_8_43.png`
+- Removed elite/boss outer glow rings from rendering so only the aircraft art remains.
+- Validation:
+  - `output/run-new-elite-boss-assets` and `output/run-new-boss-assets` completed with no error files.
+  - Playwright debug scene confirmed both new aircraft assets render in-game and the previous halo outlines are gone.
+- Refined elite/boss sprite edge cleanup by decontaminating semi-transparent pixels against the original white matte and tightening faint fringe alpha.
+- Updated cache version to `20260330k` and revalidated in a Playwright debug scene; boss/elite edges now render cleaner against the game background.
+- Replaced boss/elite source extraction with the newer black-background aircraft set (`20260330152001_12_43.png`, `20260330152002_13_43.png`).
+- Generated game-sized transparent sprites directly (`boss_plane_transparent.png` 606x320, `elite_plane_transparent.png` 341x180) to reduce runtime downscaling artifacts and improve edge smoothness.
+- Updated asset/script cache version to `20260330l` and verified in Playwright debug scene.
+- Swapped elite/boss sprites to true-alpha removebg exports:
+  - `20260330144344_7_43-removebg-preview.png`
+  - `20260330144345_8_43-removebg-preview.png`
+- Replaced the prior generated transparent assets directly and bumped cache version to `20260330m`.
+- Verified in Playwright debug scene; these assets are genuine RGBA PNGs and should produce the cleanest edges so far.
+- Adjusted win timing so `Victory` appears only after the boss death animation/explosion window finishes.
+- Added `timers.victoryDelay` to render_game_to_text for deterministic verification.
+- Playwright debug verification confirmed the sequence: boss dies -> mode stays `playing` while `victoryDelay` counts down -> mode changes to `won` only after delay reaches 0 and boss/explosions are gone.
+- Replaced player and standard enemy aircraft with true-alpha removebg assets:
+  - player source: `20260330134524_5_43-removebg-preview.png`
+  - standard enemy source: `20260330140054_6_43-removebg-preview.png`
+- Updated cache version to `20260330o` and verified gameplay render in Playwright.
+- Rebalanced aircraft display scales for a more coherent size hierarchy:
+  - player height 84
+  - normal enemy scale 1.72x
+  - elite enemy scale 2.0x
+  - boss scale 2.55x
+- Updated cache version to `20260330p` and verified a mixed player/enemy/elite/boss scene in Playwright.
+- Reduced boss display scale slightly again from 2.55x to 2.38x for a less HUD-dominant silhouette while preserving boss presence.
+- Updated cache version to `20260330q` and verified boss presentation in Playwright.
+- Replaced player bullet rendering with sprite asset `assets/bullet.png` while preserving existing bullet physics/collision.
+- Added bullet image preload path and cache version `20260330r`; fallback rectangle rendering remains if image load fails.
+- UI polish pass:
+  - Added `body.in-action` chrome toggle so the large page title and bottom control tip fade out during active gameplay.
+  - Reworked win/lose presentation into a dedicated result card with dimmed backdrop and final score capsule.
+  - Refined HUD hierarchy into clearer mission/lives blocks with a wider progress strip and preserved boss/status badges.
+- Validation:
+  - Playwright combat scene confirmed title/tip are hidden during active play.
+  - Playwright loss scene confirmed the new Game Over card layout renders correctly over gameplay.
+- Start screen redesign:
+  - Added an outer mission briefing block with theatre/callsign/mission/threat copy and renamed CTA to `Launch Sortie`.
+  - Replaced the in-canvas menu text with a sortie-briefing card so the menu, HUD, and result overlays share a consistent visual language.
+  - Updated cache version to `20260330t` and verified both menu and combat screens in Playwright.
+- Homepage visual refresh:
+  - Restyled `styles.css` toward a more premium tactical-briefing look with layered atmospheric background, grid/glow overlays, stronger title hierarchy, richer CTA button treatment, upgraded canvas frame styling, and elevated briefing/control cards.
+  - Added label-style treatments for the lower info cards (`BRIEFING`, `Controls`) using CSS pseudo-elements instead of extra markup.
+  - Updated cache version references in `index.html` to `20260330v`.
+- Typography + motion pass:
+  - Added Google Fonts (`Barlow Condensed`, `IBM Plex Sans`) in `index.html` and updated cache version to `20260330w`.
+  - Unified page typography around a display/UI font pair and switched canvas HUD/menu/result text to the same display family with Trebuchet fallback.
+  - Added restrained entry/micro-motion to the page shell, title, button sheen, cards, and canvas frame for a more premium feel.
+  - Added `invalidateUiCaches()` and a `document.fonts.ready` hook in `game.js` so HUD/menu/result offscreen caches rebuild after web fonts finish loading.
+- Validation:
+  - `node --check web-shooter-game/game.js` passed after the typography update.
+  - Playwright validation run `output/web-game-font-motion` completed successfully after the font/motion pass and emitted `state-0.json` / `state-1.json`, confirming the homepage still enters active play and game state progresses normally.
+- Validation:
+  - `ReadLints` reported no issues in `index.html` or `styles.css`.
+  - Static local server started successfully on port `4173`.
+  - Fixed Playwright skill resolution by linking the shared skill script directory to the project's local `node_modules`.
+  - Installed Playwright Chromium browser successfully.
+  - Initial skill run still crashed inside sandboxed Chromium, but re-running the same client outside the sandbox succeeded.
+  - Validation run `output/web-game-ui-refresh` now completes successfully and emits gameplay state captures (`state-0.json`, `state-1.json`) showing the game starts correctly and progresses in active play with `targetScore: 30`.
+  - Validation run `output/web-game-font-motion` completed successfully after the typography/motion pass; emitted `state-0.json` and `state-1.json` both show normal gameplay progression from the refreshed homepage into active play.
+- Cover-page + brand pass:
+  - Added cover-page metadata on the homepage (`Sector AX-17`, command tag, deck copy, cover-sheet divider, classification line) to make the landing screen read more like a formal sortie dossier.
+  - Tightened the homepage shell styling with a subtle seal-like highlight disc and spacing updates so the new badge/divider elements sit cleanly above the CTA.
+  - Restyled the in-canvas HUD toward the same command-sheet language: `TACTICAL FEED` nameplate, `MISSION COUNT` block, sector code, brighter progress strip, and upgraded auxiliary status pills.
+  - Restyled the Boss bar into a labeled command alert strip with HP readout and matched blue/gold palette.
+  - Updated the win/lose result card styling to mirror the cover-sheet language with a top label tab, divider rule, stronger score capsule, and dossier footer copy.
+  - Updated cache-busting references in `index.html` to `20260330x`.
+- Validation:
+  - `ReadLints` reported no issues in `game.js`, `index.html`, or `styles.css` after the brand pass.
+  - Playwright client runs `output/brand-home` and `output/brand-play` completed successfully and emitted valid `state-0.json` captures for menu/home and active gameplay.
+  - Additional Playwright screenshots `output/ui-homepage-full.png`, `output/ui-boss.png`, and `output/ui-badges.png` visually confirmed the new homepage cover treatment plus the refreshed HUD, auxiliary badge, and Boss bar styling.
+- Performance tuning pass:
+  - Pre-rotated enemy, elite, and boss sprite canvases at load time so runtime enemy rendering no longer does per-enemy `rotate(Math.PI)`.
+  - Replaced missile AoE's full-enemy scan with reuse of a shared enemy spatial grid, so blast damage only checks nearby buckets.
+  - Reduced missile trail rendering to the most recent segments while preserving the same blue glow styling, lowering per-frame line draw overhead.
+  - Simplified normal enemy hit flash from a second sprite `screen` pass to a lighter outline flash; full extra glow remains for dying enemies.
+- Validation:
+  - `ReadLints` reported no issues in `game.js`.
+  - Reinstalled local Playwright Chromium after the browser executable went missing in the current environment.
+  - Visual checks completed via `output/verify-opt-boss/shot-0.png` and `output/verify-opt-missile-direct.png`; enemy orientation/rendering remained correct and missile trail remained visible after the optimization pass.
+- Reorganized `assets/` into semantic runtime folders (`aircraft/`, `naval/`, `weapons/`, `backgrounds/`) and archive buckets (`archive/raw-imports`, `archive/superseded`, `archive/reference`).
+- Updated runtime references so the current active set now loads from:
+  - `assets/aircraft/player/usa/P-51D-removebg-preview.png`
+  - `assets/aircraft/enemies/ijn/A5M-Claude-removebg-preview.png`
+  - `assets/aircraft/enemies/ijn/A6M2-Zero-Model-21-removebg-preview.png`
+  - `assets/aircraft/enemies/elite/elite_plane_transparent.png`
+  - `assets/aircraft/enemies/boss/boss_plane_transparent.png`
+  - `assets/naval/bosses/KONGO-CLASS-removebg-preview.png`
+  - `assets/weapons/bullets/bullet.png`
+  - `assets/weapons/bullets/enemy_bullet_same_style.png`
+  - `assets/weapons/missiles/daodan.png`
+  - `assets/backgrounds/pacific-theatre-blueprint-bg.png`
+- Added a homepage `AIRFRAME SELECTION` block with two horizontal dossier cards for `P-51D Mustang` and `Supermarine Spitfire`.
+- Wired selection state in `game.js` so clicking a card swaps the loaded player aircraft sprite without changing gameplay stats.
+- Styled the new selection block to match the existing blueprint / dossier homepage treatment and collapse together with the rest of the cover once gameplay starts.
+- Cache-busted `index.html` CSS/JS references again so browsers pick up the new selection UI without stale assets.
+- Revised the airframe picker so it now lives inside the canvas menu / main tactical screen instead of the outer homepage DOM.
+- Added clickable in-canvas airframe cards with aircraft thumbnail previews for `P-51D Mustang` and `Supermarine Spitfire`.
+- Removed the duplicated homepage-only airframe block so there is a single source of truth for aircraft selection before launch.
+- Reworked the airframe menu into a left-side airframe index plus right-side dossier panel, so selection now reads like a pre-sortie archive terminal rather than two equal cards.
+- Hid the player aircraft from the menu-state main tactical screen; the selected aircraft is now previewed only inside the dossier panel.
+- Added first-pass dossier copy and tags for `P-51D Mustang` and `Supermarine Spitfire`, keeping the distinction visual/flavor-only with no gameplay stat changes.
+- De-emphasized the bottom `FLIGHT CONTROLS` strip so the dossier panel remains the primary focal point of the menu.
+- Corrected the airframe dossier placement: the aircraft introduction now lives in a separate right-side DOM panel beside the main game interface, matching the requested external highlighted area.
+- Simplified the in-canvas menu back to selection cards only, so the game main screen handles choosing while the external dossier panel handles aircraft presentation.
+- Synced `selectedAirframeId` into the new right-side dossier panel so thumbnail, title, tags, and notes update immediately when switching aircraft.
+- Updated menu/in-action layout so the right-side dossier panel only appears during pre-launch selection and collapses cleanly once gameplay begins.
+- Reworked the win/lose presentation into a cleaner in-canvas debrief card:
+  - kept the frozen battle scene as background but hid combat HUD during `won` / `lost`
+  - replaced the old result slab with a lighter centered debrief card showing `Score`, `Kills`, `Time`, and `Stage`
+  - added clearer action prompts: `Enter` to retry and `Esc` to return to the hangar/menu
+  - added `state.kills` tracking and exposed it through `render_game_to_text`
+- Lowered the Kongo-class battleship difficulty in `game.js`:
+  - reduced HP from 68 to 52
+  - increased incoming damage effectiveness (`armorBulletScale` 0.72 -> 0.88, `armorMissileScale` 0.58 -> 0.74)
+  - shortened shield lockout window from 0.26s to 0.18s
+  - slowed boss patrol speed from 26 to 18
+  - lengthened ship-phase firing cooldowns so each attack pattern has more dodge/recovery space
+- Split enemy bullet art into separate `normal / elite / boss` resource files under `assets/weapons/bullets/` and updated `game.js` to load per-kind sprite caches instead of relying on a single shared enemy bullet sprite at render time.
+- Replaced the temporary duplicated enemy bullet PNGs with distinct final art for `normal / elite / boss`, copied them into `assets/weapons/bullets/`, removed the load-time tint pass from `game.js`, and bumped the enemy bullet asset query string to force the browser to pick up the new resources.
+- Two-stage sortie: sinking the first Kongo no longer ends the mission. After the stage-clear delay the sortie advances to stage 2 (new `bossSpawnScore` / `targetScore`, final boss is a stronger Nagato-class battle line), and full victory only triggers after that boss and the score gate. HUD tactical strip shows `STAGE x/2`; `render_game_to_text` includes `stage` and `stageCount`.
+- Stage 2 art swap: normal enemies use A6M5-52, elites use N1K2 Shiden-Kai, final battleship uses `NAGATO-CLASS` (stage 1 remains Claude/Zero-21 mix + Kongo). Extra assets are preloaded so `allSpritesReady` waits on them.
+- In-sortie tactical UI moved off-canvas: new `#tactical-intel` panel in `.stage-aside` (hides `airframe-dossier` during `body.in-action`) shows stage, score/target, lives, engagement meter, theatre brief lines, shield/spread pills, boss warning strip, and boss HP/phase/shield. Canvas HUD / top boss HP bar removed; center boss warning overlay remains. Wide layouts keep canvas + side column; narrow breakpoints stack the panel under the canvas.
+- UX input update (menu/start phase): added keyboard airframe cycling via `ArrowLeft` / `ArrowRight`.
+- Implemented `selectAdjacentAirframe(direction)` in `game.js`, active only when `state.mode === "menu"` and ignored on key repeat.
+- Added cache invalidation in `loadSelectedAirframe()` so in-canvas selection highlight and dossier panel refresh immediately when switching by keyboard.
+- Performance/UI sync optimization pass:
+  - Removed `syncChrome()` from `render()` to avoid unconditional per-frame DOM writes on the render path.
+  - Introduced UI diff helpers (`setTextIfChanged`, `setSrcIfChanged`, `setWidthIfChanged`) and `uiSyncCache` to update tactical panel DOM only when values actually change.
+  - Kept tactical warning meter updates live, but now avoids redundant writes when unchanged.
+  - Reworked augment pills so `replaceChildren()` only runs when shield/spread signature changes instead of every frame.
+  - `tick()` now runs `syncChrome()` before `render()`; `syncChrome()` itself only toggles `body.in-action` and aria attributes on mode transitions.
+- Validation: `node --check game.js` passed after optimization.
+- Note: attempted Playwright pass for this optimization did not emit artifacts in current environment/session, so visual regression check still pending.
+- Performance pass: added sprite pre-scale variants to reduce runtime resampling cost.
+  - Added `getScaledSpriteVariant(baseCanvas, targetHeight, step)` with `WeakMap` cache.
+  - Player bullet now uses pre-scaled 22px variant (`bulletSpriteVariant`).
+  - Enemy bullets now prebuild per-kind render variants (`enemyBulletRenderSprites`) and render from cached canvases.
+  - Enemy aircraft draw path now quantizes to cached sprite heights (step 4).
+  - Ship boss draw path now quantizes to cached sprite heights (step 8).
+- Performance pass: added particle object pools to reduce allocation/GC pressure.
+  - Added pools + reuse for explosions, shockwaves, muzzle flashes.
+  - `createExplosion` / `createShockwave` now allocate from pool.
+  - `shoot` now allocates muzzle flashes from pool.
+  - Cleanup paths release pooled objects instead of only splicing arrays.
+  - `resetGame` and `returnToMenu` now clear transient effects via pooled release (`clearTransientEffects`).
+- Validation:
+  - `node --check game.js` passed.
+  - Full Playwright visual pass for this specific optimization is pending (local port connectivity was unavailable in current sandbox session).
+- Bugfix (startup regression after performance pass): fixed initialization order crash (`menuOverlayCanvas` / `bgGlowCanvas` TDZ) by moving initial `loadSelectedAirframe()` call to run after UI cache variables/functions are declared.
+- Verification:
+  - Playwright run `output/startup-bug-check` captured original crash (`ReferenceError: Cannot access 'menuOverlayCanvas' before initialization`).
+  - Playwright run `output/startup-bug-fix-check-2` now produces `shot-0.png` + `state-0.json` with no `errors-0.json`, confirming startup and launch flow recovered.
+- Follow-up optimization round (requested top 3):
+  - Tactical side-panel sync throttled into two lanes:
+    - slow lane 10Hz (`UI_PANEL_SLOW_SYNC_MS = 100`) for score/stage/lives/text/media/class toggles
+    - fast lane 20Hz (`UI_PANEL_FAST_SYNC_MS = 50`) for warning fill/title
+    - mode transitions force immediate sync
+  - Enemy bullet vs player collision now uses a padded broadphase window before `intersects()` checks to reduce per-bullet narrow-phase calls.
+  - Enemy rendering now has density-aware FX degradation for normal fighters:
+    - tier 1 (>12 normals): skip expensive dying screen-pass on normal fighters
+    - tier 2 (>20 normals): also skip normal hit flash stroke box
+  - Minor: `tick()` now passes RAF timestamp to `syncChrome(now)` to avoid extra `performance.now()` calls.
+- Validation:
+  - `node --check game.js` passed.
+  - Playwright smoke run `output/opt-three-items-check` completed with `shot-0.png` + `state-0.json`, and no `errors-0.json` produced.
+- Performance guardrail pass (enemy bullet + particle cap):
+  - Added `PERFORMANCE_CAPS` in `game.js` with hard limits: `enemyBulletsMax: 160`, `explosionParticlesMax: 420`, `shockwavesMax: 56`.
+  - Added per-frame FX spawn budgets: `explosionParticlesPerFrame: 72`, `shockwavesPerFrame: 3`.
+  - Added `resetEffectSpawnBudget()` and call at the start of each `updatePlaying()` tick.
+  - Added `queueEnemyBullets(...bullets)` and routed all enemy/boss firing paths through it so enemy bullets obey a strict global cap.
+  - Updated `createExplosion()` to respect both global active cap and per-frame spawn budget, while still trying to keep the core flash when budget allows.
+  - Updated `createShockwave()` to respect global + per-frame cap.
+- Validation:
+  - `node --check game.js` passed.
+  - Playwright run `output/enemy-bullet-particle-cap-pass` completed with screenshots/state captures and no `errors-*.json` files.
+  - Additional Playwright gameplay run `output/enemy-bullet-particle-cap-playing` confirmed in-combat rendering still works after the cap changes.
+- Boss sink notice pass:
+  - Added a post-boss tactical notice timer (`stageClearNoticeTimer`) that starts after boss death cleanup (`victoryDelay`) finishes.
+  - While the notice is active, `handleSpawning()` exits early so the next stage does not spawn enemies before the notice disappears.
+  - Added a new center overlay `drawStageClearNoticeOverlay()` styled to match the boss warning language, with stage-clear copy for intermediate acts and mission-accomplished copy for the final act.
+  - `resolveVictoryState()` now gates stage advancement / final win on the notice completing.
+  - Extended `render_game_to_text` with `timers.stageClearNotice` for deterministic validation.
+  - Added a debug-only start flag `?debug_stage_clear_notice=1` plus `window.debugTriggerStageClearNotice()` to make the overlay testable in Playwright without reaching a full boss fight.
+- Validation:
+  - `node --check game.js` passed.
+  - Playwright smoke run `output/stage-clear-notice-smoke` passed with no startup regression.
+  - Playwright targeted verification:
+    - `output/stage-clear-notice-early/state-0.json` and `output/stage-clear-notice-hold/state-0.json` both show `stage: 1`, `enemies: []`, and `timers.stageClearNotice > 0` while the notice overlay is visible.
+    - `output/stage-clear-notice-verify/state-0.json` after the full notice window shows progression to stage 2 only after the timer is gone.
+- Stage-clear notice polish pass:
+  - Added a left-to-right scan sweep inside the stage-clear notice card.
+  - Reworked the notice alpha to use eased fade-in / fade-out so the exit feels cleaner.
+  - Added a more report-like subtitle line under the EN title and kept a separate battle-report footer line.
+  - Wrapped the subtitle to two lines inside the card so it stays within the panel bounds.
+- Validation:
+  - `node --check game.js` passed.
+  - Playwright debug notice captures:
+    - `output/stage-clear-notice-polish-early/shot-0.png`
+    - `output/stage-clear-notice-polish-wrap/shot-0.png`
+  - `output/stage-clear-notice-polish-wrap/state-0.json` still shows `stage: 1`, `enemies: []`, and `timers.stageClearNotice > 0` while the polished notice is visible.
+- Stage-clear notice focus pass:
+  - Increased the notice card footprint and adjusted internal vertical spacing.
+  - Added tracked title drawing for the JP headline so the letter spacing feels less cramped.
+  - Raised subtitle contrast and tightened its wrap width for cleaner readability.
+  - `syncChrome()` now toggles `body.stage-clear-notice` while the notice is active.
+  - `styles.css` dims/de-emphasizes the tactical intel side panel during the notice (`opacity`, mild blur, slight scale-down) so the center alert becomes the clear focal point.
+- Validation:
+  - `node --check game.js` passed.
+  - Playwright debug captures:
+    - `output/stage-clear-notice-focus-early/shot-0.png`
+    - `output/stage-clear-notice-focus-pass/shot-0.png`
+  - `output/stage-clear-notice-focus-pass/state-0.json` still shows `stage: 1`, `enemies: []`, and `timers.stageClearNotice > 0` while the refined notice is active.
+- Stage-clear notice alert-strip pass:
+  - Reworked `drawStageClearNoticeOverlay()` from a rounded info card into a flatter, longer horizontal alert strip so it visually matches the boss warning language more closely.
+  - Tightened the strip proportions, reduced corner roundness, added a subtler inner frame, and kept the scan sweep / top indicator line in a more warning-strip-like layout.
+- Validation:
+  - `node --check game.js` passed.
+  - Playwright debug capture `output/stage-clear-notice-alertbar/shot-0.png` confirms the new alert-strip presentation.
+  - `output/stage-clear-notice-alertbar/state-0.json` still shows `stage: 1`, `enemies: []`, and `timers.stageClearNotice > 0` while the new strip is active.
+- Added full Stage 3 campaign pass in `game.js`:
+  - `STAGE_COUNT` increased to `3` with final score gate `95/95`.
+  - Stage 3 enemy roster now uses `A7M2 Reppu` normals and `J2M Raiden` elites.
+  - Added `YAMATO-CLASS` naval boss asset loading, Stage 3 boss warning text, tactical feed labels, and ship rendering fallback.
+  - Stage helper functions now centralize per-stage boss names, warning copy, and tactical feed art/text.
+  - Added `debug_stage=<n>` support to the existing boss warning / stage-clear debug hooks for faster validation of later stages.
+- Validation pass (Playwright loop) completed after Stage 3 work:
+  - `output/stage3-boss-warning` confirms Stage 3 warning overlay reads `大和型戦艦 接近 / YAMATO-CLASS BATTLESHIP APPROACHING`.
+  - `output/stage3-stage-clear` confirms final-stage clear notice reads `旗艦撃沈 任務達成 / MISSION ACCOMPLISHED` and remains in hold state before resolution.
+  - `output/stage3-smoke` confirms normal gameplay still starts, movement/shooting work, and stage count reports `3`.
+- Stage 3 combat escalation pass:
+  - Stage 3 elite fighters now fire tighter 3-shot spreads and Stage 3 normal fighters alternate between single aimed shots and paired volleys.
+  - Yamato boss now has stage-exclusive shelling patterns per phase:
+    - Phase 1: dense opening fan barrage
+    - Phase 2: alternating broadside plus center suppressive burst
+    - Phase 3: alternating wide fan curtain and center hammer volley
+- Added `window.debugSetStage(stage)` plus `debug_set_stage=1`, `debug_spawn_enemy=1`, and `debug_enemy_kind=` query support so later-stage enemy fire can be validated without replaying the whole sortie.
+- Validation artifacts for the escalation pass:
+  - `output/stage3-yamato-patterns` shows the new Yamato boss barrage overwhelming the player on Stage 3.
+  - `output/stage3-elite-fire` shows Stage 3 elite/normal enemy mixed fire with the new spread patterns.
+- Stage 3 atmosphere pass:
+  - Added a Stage 3-only cold storm/sea overlay so the final act reads darker and heavier than Stages 1-2.
+  - Enhanced Yamato warning overlay with concentric contact rings and warmer danger tinting.
+  - Added a Yamato presence overlay during live combat/entry: hull-centered pressure glow, wake lines, and under-hull luminance for heavier arrival weight.
+- Validation artifacts for atmosphere work:
+  - `output/stage3-atmosphere-warning` shows the revised Stage 3 warning tone and contact rings.
+  - `output/stage3-atmosphere-entering` shows Yamato on-screen with the new under-hull pressure glow and darker final-act sea treatment.
+- Pause pass (`game.js` / `index.html`):
+  - Added `state.paused` (default `false`) and `setGamePaused(next)`; only effective while `mode === "playing"`. Entering pause clears movement + Space key state so inputs do not “stick” after resume; `syncChrome()` updates UI chrome.
+  - `syncChrome()` toggles `document.body.classList.toggle("game-paused", playing && paused)` for optional styling hooks.
+  - `tick()` calls `updatePlaying(dt)` only when `playing && !paused` (game time frozen while paused).
+  - During play, **P** or **Esc** (no `repeat`) toggle pause, with `preventDefault` and early return so keys are not remapped as gameplay binds.
+  - `fireMissile` only fires when `playing && !paused`.
+  - `resetGame`, stage advance, and `returnToMenu` reset `paused` so flows never resume in a stuck-paused state.
+  - `drawPauseOverlay()` draws a dimmed fullscreen overlay on the canvas with **PAUSED** and **Press P or Esc to resume**; called from `render()` before other mode overlays.
+  - Testing hooks aligned with the main loop: `render_game_to_text` JSON now includes root-level `paused`; `window.advanceTime(ms)` skips `updatePlaying` when paused (matches `tick()`).
+  - Footer control hint in `index.html` documents **Pause: P or Esc**; script cache query bumped (`game.js?v=202604048`) for reload freshness.
+  - Reference capture: `output/pause-screen.png` (full page, paused mid-sortie).
+  - Validation: `node --check game.js` passed after the pause changes.

@@ -1,0 +1,49 @@
+# web-shooter-game: static HTML/JS game + Node (Playwright) automation.
+# output/ is documented in README (screenshots, state-*.json, errors-*.json from web_game_playwright_client.mjs).
+
+# Dependencies
+node_modules/
+
+# Playwright driver output (default screenshot dir under output/)
+output/
+
+# @playwright/test or CI (if added later)
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Python (README uses `python3 -m http.server`; local venvs)
+__pycache__/
+*.py[cod]
+.Python
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+
+# Editor backups
+*~
+*.swp
+*.swo
+
+# Optional tooling
+coverage/
+.cache/

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini Blaster</title>
+    <link rel="stylesheet" href="./styles.css?v=20260402z" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="top-bar" aria-label="Mission header">
+        <div class="top-bar__left">
+          <h1 id="game-title">Mini Blaster</h1>
+          <span class="top-bar__sep" aria-hidden="true"></span>
+          <p class="top-bar__tag">Pacific Theatre Intercept</p>
+        </div>
+        <button id="start-btn" type="button">Launch Sortie</button>
+      </header>
+      <section class="stage-shell" aria-label="Main tactical interface">
+        <div class="stage-main">
+          <canvas id="game" width="800" height="560" aria-label="Mini Blaster canvas"></canvas>
+        </div>
+        <div class="stage-aside">
+        <aside id="tactical-intel" class="tactical-intel" aria-label="Sortie tactical feed">
+          <div class="tactical-intel__header">
+            <p class="tactical-intel__eyebrow">Tactical feed</p>
+            <p class="tactical-intel__grid">GRID-04</p>
+          </div>
+          <div id="tactical-intel-warning" class="tactical-intel__warning" hidden>
+            <p id="tactical-intel-warning-title" class="tactical-intel__warning-title"></p>
+            <p class="tactical-intel__warning-sub">SURFACE CONTACT INBOUND</p>
+            <div class="tactical-intel__warning-track">
+              <div id="tactical-intel-warning-fill" class="tactical-intel__warning-fill"></div>
+            </div>
+          </div>
+          <p id="tactical-intel-stage" class="tactical-intel__stage"></p>
+          <div class="tactical-intel__mission">
+            <p class="tactical-intel__mission-label">Mission count</p>
+            <p class="tactical-intel__score">
+              <span id="tactical-intel-score">0</span><span class="tactical-intel__score-denom"> / <span id="tactical-intel-target">30</span></span>
+            </p>
+            <p class="tactical-intel__lives">Lives <span id="tactical-intel-lives">3</span></p>
+          </div>
+          <div class="tactical-intel__meter-block">
+            <p class="tactical-intel__meter-label">Engagement progress</p>
+            <div class="tactical-intel__meter">
+              <div id="tactical-intel-meter-fill" class="tactical-intel__meter-fill"></div>
+            </div>
+          </div>
+          <div class="tactical-intel__intel">
+            <p id="tactical-intel-line-act" class="tactical-intel__line"></p>
+            <p
+              id="tactical-intel-line-air-main"
+              class="tactical-intel__line tactical-intel__line--air-item"
+              aria-label="Enemy normal airframe brief"
+            >
+              <img id="tactical-intel-air-thumb-main" class="tactical-intel__air-thumb" alt="" />
+              <span id="tactical-intel-line-air-main-text" class="tactical-intel__line-text tactical-intel__name">
+                <span id="tactical-intel-line-air-main-ja" class="tactical-intel__name-ja"></span>
+                <span id="tactical-intel-line-air-main-en" class="tactical-intel__name-en"></span>
+              </span>
+            </p>
+            <p
+              id="tactical-intel-line-air-elite"
+              class="tactical-intel__line tactical-intel__line--air-item"
+              aria-label="Enemy elite airframe brief"
+            >
+              <img id="tactical-intel-air-thumb-elite" class="tactical-intel__air-thumb" alt="" />
+              <span
+                id="tactical-intel-line-air-elite-text"
+                class="tactical-intel__line-text tactical-intel__name"
+              >
+                <span id="tactical-intel-line-air-elite-ja" class="tactical-intel__name-ja"></span>
+                <span id="tactical-intel-line-air-elite-en" class="tactical-intel__name-en"></span>
+              </span>
+            </p>
+            <p
+              id="tactical-intel-line-bb"
+              class="tactical-intel__line tactical-intel__line--boss-film"
+              aria-label="Boss contact brief"
+            >
+              <span class="tactical-intel__boss-corner" aria-hidden="true">BOSS</span>
+              <span class="tactical-intel__boss-film-wrap" aria-hidden="true">
+                <img id="tactical-intel-bb-thumb" class="tactical-intel__film-card tactical-intel__film-card--boss" alt="" />
+              </span>
+              <span id="tactical-intel-line-bb-text" class="tactical-intel__line-text tactical-intel__name">
+                <span id="tactical-intel-line-bb-ja" class="tactical-intel__name-ja"></span>
+                <span id="tactical-intel-line-bb-en" class="tactical-intel__name-en"></span>
+              </span>
+            </p>
+          </div>
+          <div id="tactical-intel-augments" class="tactical-intel__augments"></div>
+        </aside>
+        <aside id="airframe-dossier" class="airframe-dossier" aria-label="Selected airframe dossier">
+          <div class="airframe-dossier__header">
+            <div class="airframe-dossier__header-top">
+              <p class="airframe-dossier__eyebrow">Airframe Dossier</p>
+              <p id="airframe-dossier-code" class="airframe-dossier__code">01</p>
+            </div>
+            <p id="airframe-dossier-status" class="airframe-dossier__status">Current Selection</p>
+          </div>
+          <div class="airframe-dossier__body">
+            <div class="airframe-dossier__thumb-wrap">
+              <div class="airframe-dossier__thumb-frame">
+                <img id="airframe-dossier-image" class="airframe-dossier__thumb" alt="" />
+              </div>
+            </div>
+            <div class="airframe-dossier__content">
+              <h2 id="airframe-dossier-title" class="airframe-dossier__title">P-51D Mustang</h2>
+              <p id="airframe-dossier-meta" class="airframe-dossier__meta">USN / Balanced Escort</p>
+              <p id="airframe-dossier-tag" class="airframe-dossier__tag">Escort Command Airframe</p>
+              <div class="airframe-dossier__notes">
+                <p id="airframe-dossier-line1"></p>
+                <p id="airframe-dossier-line2"></p>
+              </div>
+            </div>
+          </div>
+          <div class="airframe-dossier__footer">
+            <p class="airframe-dossier__footer-label">Profile Status</p>
+            <p class="airframe-dossier__footnote">Visual profile only // performance unchanged</p>
+          </div>
+        </aside>
+        </div>
+      </section>
+      <footer class="bottom-bar" aria-label="Preflight details">
+        <p id="briefing-copy" class="bottom-bar__brief">Scramble immediately — intercept hostiles and break through to the boss sortie.</p>
+        <span class="bottom-bar__divider" aria-hidden="true"></span>
+        <p id="game-tip" class="bottom-bar__controls">Move: WASD or arrows · Shoot: Space · Pause: P or Esc · Fullscreen: F · Restart: Enter</p>
+      </footer>
+    </main>
+    <script src="./game.js?v=202604048"></script>
+  </body>
+</html>
