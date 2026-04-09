@@ -148,6 +148,21 @@ TODO / suggestions for next agent:
   - Initial skill run still crashed inside sandboxed Chromium, but re-running the same client outside the sandbox succeeded.
   - Validation run `output/web-game-ui-refresh` now completes successfully and emits gameplay state captures (`state-0.json`, `state-1.json`) showing the game starts correctly and progresses in active play with `targetScore: 30`.
   - Validation run `output/web-game-font-motion` completed successfully after the typography/motion pass; emitted `state-0.json` and `state-1.json` both show normal gameplay progression from the refreshed homepage into active play.
+
+- Playability pass (Apr 9):
+  - Added light airframe differentiation in `game.js`: P-51D now leans into faster missile recycle / longer spread hold, while Spitfire gets higher speed and tighter gun cadence. Dossier + menu cards now surface these traits instead of calling airframes purely visual.
+  - Reworked tactical progress readout away from global `score / targetScore` toward stage-local boss trigger progress plus separate total score, and mirrored the same semantics in the in-canvas combat panel.
+  - Added clearer in-run affordances: `Missile ready (M)` pill, persistent airframe pill, acquired upgrade pills, updated footer/menu controls, and `Enter` fast-forward hints on boss warnings / stage-clear notices.
+  - Added a lightweight run-build layer: after each non-final stage clear, the game now enters an `upgrade` mode with 3 refit choices (`Afterburner Trim`, `Gun Harmonization`, `Rapid Rack`, `Shield Relay`, `Wide Salvo`) that modify the active sortie before the next act begins.
+  - Added boss phase readability improvements: phase descriptor text on the boss bar plus a short phase banner whenever the battleship transitions to a new phase.
+  - Added faster replay paths: menu practice start via keys `1` / `2` / `3`, loss screen primary action changed to `Retry Stage`, and `R` on loss performs a full campaign restart.
+  - Boss body collision no longer deletes the player on contact; only projectiles and air enemies do damage, improving fairness for the large ship silhouettes.
+  - Final victory now resolves immediately after the final flagship is destroyed instead of requiring an extra score gate.
+  - Validation notes:
+    - `node --check game.js` passes after the pass.
+    - IDE lints for `game.js`, `index.html`, and `styles.css` were clean after edits.
+    - The skill Playwright client hung in this environment before writing screenshots/state output, so browser-side validation was performed manually instead.
+    - Manual browser checks confirmed: airframe switching updates dossier/meta, menu practice shortcut `2` enters Stage 2, stage-clear debug route opens the new 3-choice refit overlay, selecting an upgrade advances into the next stage and surfaces the chosen upgrade pill in tactical intel, and the loss overlay now offers `Retry Stage`.
 - Cover-page + brand pass:
   - Added cover-page metadata on the homepage (`Sector AX-17`, command tag, deck copy, cover-sheet divider, classification line) to make the landing screen read more like a formal sortie dossier.
   - Tightened the homepage shell styling with a subtle seal-like highlight disc and spacing updates so the new badge/divider elements sit cleanly above the CTA.

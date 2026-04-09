@@ -12,12 +12,15 @@ const airframeDossierTagEl = document.getElementById("airframe-dossier-tag");
 const airframeDossierLine1El = document.getElementById("airframe-dossier-line1");
 const airframeDossierLine2El = document.getElementById("airframe-dossier-line2");
 const airframeDossierStatusEl = document.getElementById("airframe-dossier-status");
+const airframeDossierFootnoteEl = document.getElementById("airframe-dossier-footnote");
 const tacticalIntelWarningEl = document.getElementById("tactical-intel-warning");
 const tacticalIntelWarningTitleEl = document.getElementById("tactical-intel-warning-title");
 const tacticalIntelWarningFillEl = document.getElementById("tactical-intel-warning-fill");
 const tacticalIntelStageEl = document.getElementById("tactical-intel-stage");
+const tacticalIntelMissionLabelEl = document.getElementById("tactical-intel-mission-label");
 const tacticalIntelScoreEl = document.getElementById("tactical-intel-score");
 const tacticalIntelTargetEl = document.getElementById("tactical-intel-target");
+const tacticalIntelTotalEl = document.getElementById("tactical-intel-total");
 const tacticalIntelLivesEl = document.getElementById("tactical-intel-lives");
 const tacticalIntelMeterFillEl = document.getElementById("tactical-intel-meter-fill");
 const tacticalIntelLineActEl = document.getElementById("tactical-intel-line-act");
@@ -45,13 +48,21 @@ const AIRFRAMES = {
     id: "p51d",
     assetPath: "./assets/aircraft/player/usa/P-51D-removebg-preview.png?v=20260401a",
     title: "P-51D Mustang",
-    meta: "USN / Balanced Escort",
+    meta: "USN / Long-Range Strike",
     shortCode: "01",
-    dossierTag: "Escort Command Airframe",
+    dossierTag: "Strike Package",
     dossierBody: [
-      "Long-range escort airframe for high-visibility interception duty.",
-      "Stable command profile for front-line target cover.",
+      "Long-range escort tuned for repeated missile re-attack windows.",
+      "Keeps pressure on large contacts without slowing the sortie pace.",
     ],
+    statSummary: "Faster missile recycle // spread pickups hold longer",
+    combatProfile: {
+      speedScale: 1,
+      fireRateScale: 1,
+      missileCooldownScale: 0.88,
+      shieldCapBonus: 0,
+      spreadDurationBonus: 0.8,
+    },
   },
   spitfire: {
     id: "spitfire",
@@ -59,11 +70,19 @@ const AIRFRAMES = {
     title: "Supermarine Spitfire",
     meta: "RN / Agile Interceptor",
     shortCode: "02",
-    dossierTag: "Rapid Response Interceptor",
+    dossierTag: "Knife-Fight Interceptor",
     dossierBody: [
       "Quick-turn interceptor built for fast sector response.",
-      "Sharper close-in posture with a lighter visual profile.",
+      "Sharper throttle response and a tighter primary-gun rhythm.",
     ],
+    statSummary: "Higher top speed // tighter main-gun cadence",
+    combatProfile: {
+      speedScale: 1.08,
+      fireRateScale: 0.94,
+      missileCooldownScale: 1.06,
+      shieldCapBonus: 0,
+      spreadDurationBonus: 0,
+    },
   },
 };
 const AIRFRAME_ORDER = Object.keys(AIRFRAMES);
@@ -72,6 +91,8 @@ const menuAirframeHitboxes = [];
 let menuHoveredAirframeId = null;
 const resultButtonHitboxes = [];
 let hoveredResultButton = null;
+const upgradeCardHitboxes = [];
+let hoveredUpgradeIndex = -1;
 let canRender = false;
 
 function buildSpriteCanvas(image, rotation = 0) {
@@ -146,6 +167,7 @@ function loadSelectedAirframe() {
   playerSpriteReady = false;
   playerSpriteCanvas = null;
   playerImage.src = airframe.assetPath;
+  applyCombatProfile();
   invalidateUiCaches();
   syncAirframeDossier();
   if (canRender) render();
@@ -164,7 +186,8 @@ function syncAirframeDossier() {
   if (airframeDossierTagEl) airframeDossierTagEl.textContent = airframe.dossierTag;
   if (airframeDossierLine1El) airframeDossierLine1El.textContent = airframe.dossierBody?.[0] || "";
   if (airframeDossierLine2El) airframeDossierLine2El.textContent = airframe.dossierBody?.[1] || "";
-  if (airframeDossierStatusEl) airframeDossierStatusEl.textContent = "Current Selection";
+  if (airframeDossierStatusEl) airframeDossierStatusEl.textContent = airframe.dossierTag;
+  if (airframeDossierFootnoteEl) airframeDossierFootnoteEl.textContent = airframe.statSummary;
 }
 
 const enemyClaudeImage = new Image();
@@ -546,6 +569,199 @@ function getStageLoadout(stage) {
   };
 }
 
+const BASE_PLAYER_STATS = {
+  speed: 340,
+  fireInterval: 0.17,
+  spreadFireInterval: 0.13,
+  missileCooldown: 1.6,
+  maxShield: 3,
+  spreadDuration: 7.5,
+};
+
+function createDefaultRunBonuses() {
+  return {
+    speedScale: 1,
+    fireRateScale: 1,
+    missileCooldownScale: 1,
+    shieldCapBonus: 0,
+    spreadDurationBonus: 0,
+  };
+}
+
+const RUN_UPGRADE_POOL = [
+  {
+    id: "afterburner-trim",
+    label: "Afterburner Trim",
+    shortLabel: "Afterburner",
+    description: "Loosens the airframe for faster lateral correction through dense bullet lanes.",
+    statLine: "+8% move speed",
+    apply() {
+      state.runBonuses.speedScale *= 1.08;
+    },
+  },
+  {
+    id: "gun-harmonization",
+    label: "Gun Harmonization",
+    shortLabel: "Gun Feed",
+    description: "Tightens wing-gun timing so the main battery cycles sooner on every burst.",
+    statLine: "-8% primary cooldown",
+    apply() {
+      state.runBonuses.fireRateScale *= 0.92;
+    },
+  },
+  {
+    id: "rapid-rack",
+    label: "Rapid Rack",
+    shortLabel: "Rapid Rack",
+    description: "Shortens missile recycle time so large contacts are pressured more often.",
+    statLine: "-14% missile cooldown",
+    apply() {
+      state.runBonuses.missileCooldownScale *= 0.86;
+    },
+  },
+  {
+    id: "shield-relay",
+    label: "Shield Relay",
+    shortLabel: "Shield Relay",
+    description: "Expands reserve shielding and immediately tops one charge back into the bay.",
+    statLine: "+1 shield cap and +1 charge",
+    apply() {
+      state.runBonuses.shieldCapBonus += 1;
+    },
+  },
+  {
+    id: "wide-salvo",
+    label: "Wide Salvo",
+    shortLabel: "Wide Salvo",
+    description: "Keeps spread ammo active longer so elite waves can be pushed aggressively.",
+    statLine: "+2.2s spread duration",
+    apply() {
+      state.runBonuses.spreadDurationBonus += 2.2;
+    },
+  },
+];
+
+function getStageStartScore(stage) {
+  if (stage <= 1) return 0;
+  return getStageProgress(stage - 1).targetScore;
+}
+
+function getAirframeCombatProfile() {
+  return (AIRFRAMES[selectedAirframeId] || AIRFRAMES.p51d).combatProfile;
+}
+
+function getCombinedCombatProfile() {
+  const airframeProfile = getAirframeCombatProfile();
+  const runBonuses = state?.runBonuses || createDefaultRunBonuses();
+  return {
+    speed: BASE_PLAYER_STATS.speed * airframeProfile.speedScale * runBonuses.speedScale,
+    fireInterval: BASE_PLAYER_STATS.fireInterval * airframeProfile.fireRateScale * runBonuses.fireRateScale,
+    spreadFireInterval:
+      BASE_PLAYER_STATS.spreadFireInterval * airframeProfile.fireRateScale * runBonuses.fireRateScale,
+    missileCooldown:
+      BASE_PLAYER_STATS.missileCooldown * airframeProfile.missileCooldownScale * runBonuses.missileCooldownScale,
+    maxShield: BASE_PLAYER_STATS.maxShield + airframeProfile.shieldCapBonus + runBonuses.shieldCapBonus,
+    spreadDuration:
+      BASE_PLAYER_STATS.spreadDuration + airframeProfile.spreadDurationBonus + runBonuses.spreadDurationBonus,
+  };
+}
+
+function applyCombatProfile() {
+  if (!state?.player) return null;
+  const profile = getCombinedCombatProfile();
+  state.player.speed = profile.speed;
+  state.fireInterval = profile.fireInterval;
+  state.spreadFireInterval = profile.spreadFireInterval;
+  state.missileCooldownDuration = profile.missileCooldown;
+  state.playerMaxShield = profile.maxShield;
+  state.playerSpreadDuration = profile.spreadDuration;
+  state.player.shield = Math.min(state.player.shield, state.playerMaxShield);
+  return profile;
+}
+
+function getBossPhaseDescriptor(boss, phase = boss?.phase || 1) {
+  if (!boss) return "Opening volley";
+  if (boss.variant === "yamato") {
+    if (phase === 1) return "Opening fan spread";
+    if (phase === 2) return "Alternating broadside sweep";
+    return "Final heavy barrage";
+  }
+  if (phase === 1) return "Main battery ranging";
+  if (phase === 2) return "Cross-broadside pressure";
+  return "Heavy salvo collapse";
+}
+
+function announceBossPhase(boss, phase = boss?.phase || 1) {
+  if (!boss) return;
+  state.phaseBannerTimer = 1.5;
+  state.phaseBannerText = `${getBossDisplayName(boss.variant)} // PHASE ${phase}`;
+  state.phaseBannerSub = getBossPhaseDescriptor(boss, phase);
+}
+
+function pickUpgradeChoices() {
+  const pool = RUN_UPGRADE_POOL.slice();
+  const picks = [];
+  while (pool.length && picks.length < 3) {
+    const index = Math.floor(Math.random() * pool.length);
+    picks.push(pool.splice(index, 1)[0]);
+  }
+  return picks;
+}
+
+function openUpgradeDraft() {
+  state.mode = "upgrade";
+  state.paused = false;
+  state.upgradeChoices = pickUpgradeChoices();
+  state.upgradeSelection = 0;
+  upgradeCardHitboxes.length = 0;
+  hoveredUpgradeIndex = -1;
+  canvas.style.cursor = "";
+  invalidateUiCaches();
+  syncChrome();
+  render();
+}
+
+function applyRunUpgrade(choice) {
+  if (!choice?.apply) return;
+  choice.apply();
+  state.runUpgradeHistory.push(choice.shortLabel || choice.label);
+  applyCombatProfile();
+  if (choice.id === "shield-relay") {
+    state.player.shield = Math.min(state.playerMaxShield, state.player.shield + 1);
+  }
+}
+
+function chooseUpgrade(index) {
+  const choice = state.upgradeChoices[index];
+  if (!choice) return;
+  applyRunUpgrade(choice);
+  state.upgradeChoices = [];
+  state.upgradeSelection = 0;
+  upgradeCardHitboxes.length = 0;
+  hoveredUpgradeIndex = -1;
+  advanceToNextStage();
+  state.mode = "playing";
+  syncChrome();
+  render();
+}
+
+function skipCinematicTimers() {
+  let skipped = false;
+  if (state.mode === "playing" && state.bossWarningTimer > 0 && !state.bossSpawned) {
+    state.bossWarningTimer = Math.min(state.bossWarningTimer, 0.2);
+    skipped = true;
+  }
+  if (state.mode === "playing" && state.victoryDelay > 0) {
+    state.victoryDelay = Math.min(state.victoryDelay, 0.14);
+    skipped = true;
+  }
+  if (state.mode === "playing" && state.stageClearNoticeTimer > 0) {
+    state.stageClearNoticeTimer = Math.min(state.stageClearNoticeTimer, 0.18);
+    skipped = true;
+  }
+  return skipped;
+}
+
 /** Score gained this stage only — used for non-boss spawn pacing so each act’s time-to-boss stays comparable. */
 function stageDifficultyScore() {
   return Math.max(0, state.score - (state.stageScoreStart || 0));
@@ -572,10 +788,12 @@ function advanceToNextStage() {
   state.stageClearNoticeTimer = -1;
   state.player.invulnTimer = 0;
   applyStageProgress(state.stage);
+  applyCombatProfile();
   state.bullets.length = 0;
   state.enemyBullets.length = 0;
   state.missiles.length = 0;
   state.enemies.length = 0;
+  state.powerups.length = 0;
   invalidateUiCaches();
   state.paused = false;
 }
@@ -594,21 +812,26 @@ const state = {
   frame: 0,
   spawnCooldown: 0,
   fireCooldown: 0,
+  fireInterval: BASE_PLAYER_STATS.fireInterval,
+  spreadFireInterval: BASE_PLAYER_STATS.spreadFireInterval,
   hitStop: 0,
   victoryDelay: 0,
   stageClearNoticeTimer: -1,
-  stageClearNoticeDuration: 3,
+  stageClearNoticeDuration: 2.4,
   nextEnemyId: 1,
   bossSpawned: false,
   bossDefeated: false,
   bossWarningTimer: 0,
-  bossWarningDuration: 4,
+  bossWarningDuration: 3.2,
+  phaseBannerTimer: 0,
+  phaseBannerText: "",
+  phaseBannerSub: "",
   player: {
     x: canvas.width / 2,
     y: canvas.height - 55,
     w: 46,
     h: 24,
-    speed: 340,
+    speed: BASE_PLAYER_STATS.speed,
     vx: 0,
     vy: 0,
     shield: 0,
@@ -625,12 +848,22 @@ const state = {
   keys: { left: false, right: false, up: false, down: false, space: false },
   missiles: [],
   missileCooldown: 0,
+  missileCooldownDuration: BASE_PLAYER_STATS.missileCooldown,
+  playerMaxShield: BASE_PLAYER_STATS.maxShield,
+  playerSpreadDuration: BASE_PLAYER_STATS.spreadDuration,
   activeBoss: null,
   paused: false,
+  nextEliteDropType: "spread",
+  normalKillsSinceDrop: 0,
+  runBonuses: createDefaultRunBonuses(),
+  runUpgradeHistory: [],
+  upgradeChoices: [],
+  upgradeSelection: 0,
 };
 canRender = true;
 
 applyStageProgress(state.stage);
+applyCombatProfile();
 
 const STARS = Array.from({ length: 70 }, (_, i) => ({
   x: (i * 91) % canvas.width,
@@ -834,14 +1067,15 @@ function buildPlayerShadowCanvas() {
 
 loadSelectedAirframe();
 
-function resetGame() {
+function startStageCheckpoint(stageOverride = 1, { preserveRunBonuses = false } = {}) {
   state.mode = "playing";
-  state.score = 0;
+  const stage = Math.max(1, Math.min(STAGE_COUNT, Number(stageOverride) || 1));
+  state.score = getStageStartScore(stage);
   state.kills = 0;
   state.lives = 3;
-  state.stage = 1;
-  applyStageProgress(1);
-  state.stageScoreStart = 0;
+  state.stage = stage;
+  applyStageProgress(stage);
+  state.stageScoreStart = state.score;
   state.elapsed = 0;
   state.spawnCooldown = 0.4;
   state.fireCooldown = 0;
@@ -853,14 +1087,26 @@ function resetGame() {
   state.bossDefeated = false;
   state.bossWarningTimer = 0;
   state.activeBoss = null;
+  state.phaseBannerTimer = 0;
+  state.phaseBannerText = "";
+  state.phaseBannerSub = "";
   state.missileCooldown = 0;
   state.paused = false;
+  state.upgradeChoices = [];
+  state.upgradeSelection = 0;
+  if (!preserveRunBonuses) {
+    state.runBonuses = createDefaultRunBonuses();
+    state.runUpgradeHistory = [];
+  }
+  state.nextEliteDropType = "spread";
+  state.normalKillsSinceDrop = 0;
+  applyCombatProfile();
   state.player.x = canvas.width / 2;
   state.player.y = canvas.height - 55;
   state.player.vx = 0;
   state.player.vy = 0;
-  state.player.shield = 0;
-  state.player.invulnTimer = 0;
+  state.player.shield = preserveRunBonuses && state.playerMaxShield > BASE_PLAYER_STATS.maxShield ? 1 : 0;
+  state.player.invulnTimer = 1.05;
   state.player.spreadTimer = 0;
   state.bullets.length = 0;
   state.enemyBullets.length = 0;
@@ -871,9 +1117,19 @@ function resetGame() {
   invalidateUiCaches();
   startBtn.disabled = true;
   startBtn.hidden = true;
+  hoveredResultButton = null;
+  hoveredUpgradeIndex = -1;
   canvas.focus();
   syncChrome();
+}
+
+function resetGame() {
+  startStageCheckpoint(1);
   applyDebugStartState();
+}
+
+function restartCurrentStage() {
+  startStageCheckpoint(state.stage, { preserveRunBonuses: true });
 }
 
 function applyDebugStartState() {
@@ -914,7 +1170,17 @@ function returnToMenu() {
   state.bossDefeated = false;
   state.bossWarningTimer = 0;
   state.activeBoss = null;
+  state.phaseBannerTimer = 0;
+  state.phaseBannerText = "";
+  state.phaseBannerSub = "";
   state.missileCooldown = 0;
+  state.runBonuses = createDefaultRunBonuses();
+  state.runUpgradeHistory = [];
+  state.upgradeChoices = [];
+  state.upgradeSelection = 0;
+  state.nextEliteDropType = "spread";
+  state.normalKillsSinceDrop = 0;
+  applyCombatProfile();
   state.player.x = canvas.width / 2;
   state.player.y = canvas.height - 55;
   state.player.vx = 0;
@@ -933,7 +1199,9 @@ function returnToMenu() {
   startBtn.hidden = false;
   canvas.style.cursor = "";
   hoveredResultButton = null;
+  hoveredUpgradeIndex = -1;
   resultButtonHitboxes.length = 0;
+  upgradeCardHitboxes.length = 0;
   syncChrome();
   render();
 }
@@ -1035,13 +1303,20 @@ function syncTacticalIntelPanel(nowMs = performance.now(), force = false) {
     state.activeBoss && !state.activeBoss.dying && state.activeBoss.variant
       ? state.activeBoss.variant
       : getStageBossVariant(state.stage);
+  const stageProgress = stageDifficultyScore();
+  const bossBand = Math.max(1, state.bossSpawnScoreDelta || state.bossSpawnScore || 1);
+  const stageProgressClamped = Math.min(stageProgress, bossBand);
 
   if (doSlowSync) {
     setTextIfChanged(tacticalIntelStageEl, `STAGE ${state.stage} / ${STAGE_COUNT}`);
-    setTextIfChanged(tacticalIntelScoreEl, state.score);
-    setTextIfChanged(tacticalIntelTargetEl, state.targetScore);
+    setTextIfChanged(tacticalIntelMissionLabelEl, state.bossDefeated ? "Sector clear" : state.bossSpawned ? "Boss contact" : "Boss trigger");
+    setTextIfChanged(tacticalIntelScoreEl, stageProgressClamped);
+    setTextIfChanged(tacticalIntelTargetEl, bossBand);
+    setTextIfChanged(tacticalIntelTotalEl, state.score);
     setTextIfChanged(tacticalIntelLivesEl, state.lives);
-    const ratio = Math.max(0, Math.min(1, state.targetScore ? state.score / state.targetScore : 0));
+    const ratio = state.bossSpawned || state.bossDefeated
+      ? 1
+      : Math.max(0, Math.min(1, stageProgress / bossBand));
     setWidthIfChanged(tacticalIntelMeterFillEl, `${ratio * 100}%`);
 
     const brief = getTheatreIntelBrief();
@@ -1074,14 +1349,19 @@ function syncTacticalIntelPanel(nowMs = performance.now(), force = false) {
 
     if (tacticalIntelAugmentsEl) {
       const spreadLabel = state.player.spreadTimer > 0 ? state.player.spreadTimer.toFixed(1) : "0.0";
-      const augmentSig = `${state.player.shield}|${spreadLabel}`;
+      const missileLabel = state.missileCooldown > 0 ? state.missileCooldown.toFixed(1) : "ready";
+      const augmentSig = `${selectedAirframeId}|${state.player.shield}|${spreadLabel}|${missileLabel}|${state.runUpgradeHistory.join(",")}`;
       if (augmentSig !== uiSyncCache.augmentSig) {
         uiSyncCache.augmentSig = augmentSig;
         tacticalIntelAugmentsEl.replaceChildren();
+        const airframePill = document.createElement("span");
+        airframePill.className = "tactical-intel__pill tactical-intel__pill--airframe";
+        airframePill.textContent = `${getSelectedAirframe().title} // ${getSelectedAirframe().dossierTag}`;
+        tacticalIntelAugmentsEl.appendChild(airframePill);
         if (state.player.shield > 0) {
           const shield = document.createElement("span");
           shield.className = "tactical-intel__pill tactical-intel__pill--shield";
-          shield.textContent = `Shield x${state.player.shield}`;
+          shield.textContent = `Shield ${state.player.shield}/${state.playerMaxShield}`;
           tacticalIntelAugmentsEl.appendChild(shield);
         }
         if (state.player.spreadTimer > 0) {
@@ -1089,6 +1369,16 @@ function syncTacticalIntelPanel(nowMs = performance.now(), force = false) {
           spread.className = "tactical-intel__pill tactical-intel__pill--spread";
           spread.textContent = `Spread ${spreadLabel}s`;
           tacticalIntelAugmentsEl.appendChild(spread);
+        }
+        const missile = document.createElement("span");
+        missile.className = "tactical-intel__pill tactical-intel__pill--missile";
+        missile.textContent = state.missileCooldown > 0 ? `Missile ${missileLabel}s` : "Missile ready (M)";
+        tacticalIntelAugmentsEl.appendChild(missile);
+        for (const upgrade of state.runUpgradeHistory) {
+          const upgradePill = document.createElement("span");
+          upgradePill.className = "tactical-intel__pill tactical-intel__pill--upgrade";
+          upgradePill.textContent = upgrade;
+          tacticalIntelAugmentsEl.appendChild(upgradePill);
         }
       }
     }
@@ -1312,6 +1602,7 @@ function spawnBoss() {
   };
   state.enemies.push(bossObj);
   state.activeBoss = bossObj;
+  announceBossPhase(bossObj, 1);
 }
 
 function getShipBossPhase(enemy) {
@@ -1507,7 +1798,7 @@ function fireMissile() {
   const target = pickMissileTarget();
 
   state.missiles.push(createMissile(x, muzzleY, target));
-  state.missileCooldown = 1.6;
+  state.missileCooldown = state.missileCooldownDuration;
 }
 
 function updateMissiles(dt) {
@@ -1661,11 +1952,17 @@ function spawnPowerup(x, y, type) {
 function maybeDropPowerup(enemy) {
   const roll = Math.random();
   if (enemy.elite) {
-    spawnPowerup(enemy.x + enemy.w / 2 - 11, enemy.y + enemy.h / 2 - 11, roll < 0.55 ? "spread" : "shield");
+    const type = state.nextEliteDropType;
+    state.nextEliteDropType = type === "spread" ? "shield" : "spread";
+    spawnPowerup(enemy.x + enemy.w / 2 - 11, enemy.y + enemy.h / 2 - 11, type);
     return;
   }
-  if (roll < 0.08) {
-    spawnPowerup(enemy.x + enemy.w / 2 - 11, enemy.y + enemy.h / 2 - 11, roll < 0.04 ? "spread" : "shield");
+  state.normalKillsSinceDrop += 1;
+  const shouldPityDrop = state.normalKillsSinceDrop >= 9;
+  if (roll < 0.08 || shouldPityDrop) {
+    state.normalKillsSinceDrop = 0;
+    const type = state.player.shield <= 0 ? "shield" : state.player.spreadTimer <= 1 ? "spread" : roll < 0.5 ? "shield" : "spread";
+    spawnPowerup(enemy.x + enemy.w / 2 - 11, enemy.y + enemy.h / 2 - 11, type);
   }
 }
 
@@ -1721,6 +2018,7 @@ function updateCooldowns(dt) {
   state.spawnCooldown -= dt;
   state.fireCooldown -= dt;
   state.missileCooldown = Math.max(0, state.missileCooldown - dt);
+  state.phaseBannerTimer = Math.max(0, state.phaseBannerTimer - dt);
 }
 
 function updatePlayerMovementAndShooting(dt) {
@@ -1740,7 +2038,7 @@ function updatePlayerMovementAndShooting(dt) {
 
   if (state.keys.space && state.fireCooldown <= 0) {
     shoot();
-    state.fireCooldown = state.player.spreadTimer > 0 ? 0.13 : 0.17;
+    state.fireCooldown = state.player.spreadTimer > 0 ? state.spreadFireInterval : state.fireInterval;
   }
 }
 
@@ -1799,7 +2097,9 @@ function updateEnemies(dt) {
     if (!e.dying) {
       if (e.ship && e.boss) {
         e.hitShieldTimer = Math.max(0, (e.hitShieldTimer || 0) - dt);
-        e.phase = getShipBossPhase(e);
+        const nextPhase = getShipBossPhase(e);
+        if (e.phase !== nextPhase) announceBossPhase(e, nextPhase);
+        e.phase = nextPhase;
       }
       if (e.ship) {
         if (e.x < e.anchorX) {
@@ -2167,8 +2467,8 @@ function resolvePowerupsPlayerCollisions(playerRect) {
   for (let i = state.powerups.length - 1; i >= 0; i--) {
     const p = state.powerups[i];
     if (intersects(p, playerRect)) {
-      if (p.type === "shield") state.player.shield = Math.min(3, state.player.shield + 1);
-      if (p.type === "spread") state.player.spreadTimer = Math.max(state.player.spreadTimer, 7.5);
+      if (p.type === "shield") state.player.shield = Math.min(state.playerMaxShield, state.player.shield + 1);
+      if (p.type === "spread") state.player.spreadTimer = Math.max(state.player.spreadTimer, state.playerSpreadDuration);
       createExplosion(p.x + p.w / 2, p.y + p.h / 2, p.type === "shield" ? "#88ecff" : "#ffd86a", 10);
       createShockwave(p.x + p.w / 2, p.y + p.h / 2, p.type === "shield" ? "#8fdfff" : "#ffe08e");
       state.powerups.splice(i, 1);
@@ -2180,6 +2480,7 @@ function resolveEnemiesPlayerCollisions() {
   for (let i = state.enemies.length - 1; i >= 0; i--) {
     const e = state.enemies[i];
     if (e.dying) continue;
+    if (e.ship && e.boss) continue;
     const reachedBottom = e.y > canvas.height + 8;
     const hitPlayer =
       e.x < state.player.x + state.player.w / 2 && e.x + e.w > state.player.x - state.player.w / 2 && e.y + e.h > state.player.y - state.player.h / 2;
@@ -2221,12 +2522,10 @@ function resolveVictoryState() {
   }
   if (state.stageClearNoticeTimer > 0) return;
   if (state.stage < STAGE_COUNT) {
-    advanceToNextStage();
+    openUpgradeDraft();
     return;
   }
-  if (state.score >= state.targetScore) {
-    state.mode = "won";
-  }
+  state.mode = "won";
 }
 
 function updatePlaying(dt) {
@@ -2497,10 +2796,47 @@ function drawBossApproachBar() {
   ctx.fillStyle = "rgba(255, 230, 198, 0.92)";
   ctx.fillText(`HP ${Math.ceil(boss.hp)} / ${boss.maxHp}`, barX + barW, trackY + trackH + 15);
 
+  ctx.textAlign = "left";
+  ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  ctx.fillStyle = "rgba(152, 222, 255, 0.82)";
+  ctx.fillText(getBossPhaseDescriptor(boss), barX, trackY + trackH + 15);
+
+  ctx.restore();
+}
+
+function drawBossPhaseBanner() {
+  if (state.mode !== "playing" || state.phaseBannerTimer <= 0 || !state.phaseBannerText) return;
+  const t = Math.min(1, state.phaseBannerTimer / 1.5);
+  const alpha = Math.min(1, 0.2 + t * 0.7);
+  const panelW = 320;
+  const panelH = 46;
+  const x = (canvas.width - panelW) / 2;
+  const y = 54;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(8, 22, 35, 0.88)";
+  ctx.beginPath();
+  ctx.roundRect(x, y, panelW, panelH, 14);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(132, 214, 255, 0.32)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(255, 234, 196, 0.96)";
+  ctx.font = "800 14px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  ctx.fillText(state.phaseBannerText, canvas.width / 2, y + 18);
+  ctx.fillStyle = "rgba(145, 229, 255, 0.84)";
+  ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  ctx.fillText(state.phaseBannerSub, canvas.width / 2, y + 33);
   ctx.restore();
 }
 
 function drawCombatStatusPanel(panelX, panelY, panelW, panelH) {
+  const bossBand = Math.max(1, state.bossSpawnScoreDelta || state.bossSpawnScore || 1);
+  const stageProgress = Math.min(stageDifficultyScore(), bossBand);
+  const ratio = state.bossSpawned || state.bossDefeated ? 1 : stageProgress / bossBand;
   const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
   panelGrad.addColorStop(0, "rgba(7, 25, 43, 0.86)");
   panelGrad.addColorStop(1, "rgba(10, 41, 68, 0.72)");
@@ -2518,15 +2854,17 @@ function drawCombatStatusPanel(panelX, panelY, panelW, panelH) {
   ctx.fillText("COMBAT STATUS", panelX + 14, panelY + 16);
   ctx.fillStyle = "#eef8ff";
   ctx.font = "700 13px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText("MISSION", panelX + 14, panelY + 34);
+  ctx.fillText(state.bossSpawned ? "BOSS CONTACT" : state.bossDefeated ? "SECTOR CLEAR" : "BOSS TRIGGER", panelX + 14, panelY + 34);
   ctx.fillStyle = "#eef8ff";
   ctx.font = "700 22px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText(`${state.score}/${state.targetScore}`, panelX + 14, panelY + 58);
+  ctx.fillText(`${stageProgress}/${bossBand}`, panelX + 14, panelY + 58);
+  ctx.fillStyle = "rgba(186, 224, 248, 0.86)";
+  ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  ctx.fillText(`TOTAL SCORE ${state.score}`, panelX + 14, panelY + 69);
 
   const meterX = panelX + 14;
   const meterY = panelY + 68;
   const meterW = 192;
-  const ratio = state.score / state.targetScore;
 
   ctx.fillStyle = "rgba(255,255,255,0.12)";
   ctx.beginPath();
@@ -2697,7 +3035,7 @@ function drawBossWarningOverlay() {
 
   ctx.fillStyle = `rgba(255, 162, 150, ${0.7 + alpha * 0.16})`;
   ctx.font = "700 9px 'Orbitron', 'Barlow Condensed', sans-serif";
-  ctx.fillText("WARNING // HEAVY SURFACE CONTACT", canvas.width / 2, panelY + 79);
+  ctx.fillText("WARNING // HEAVY SURFACE CONTACT // PRESS ENTER TO SKIP", canvas.width / 2, panelY + 79);
 
   ctx.restore();
 }
@@ -2717,7 +3055,9 @@ function drawStageClearNoticeOverlay() {
   const subtitle = isFinalStage
     ? "Primary hostile flagship destroyed. Friendly command confirms sector security."
     : "Enemy command vessel neutralized. Airspace control is temporarily restored.";
-  const footer = isFinalStage ? "FINAL REPORT // OPERATION COMPLETE" : "TACTICAL REPORT // NEXT-SECTOR INTERCEPT READY";
+  const footer = isFinalStage
+    ? "FINAL REPORT // OPERATION COMPLETE // PRESS ENTER TO CONTINUE"
+    : "TACTICAL REPORT // NEXT-SECTOR INTERCEPT READY // PRESS ENTER TO CONTINUE";
 
   ctx.save();
   ctx.fillStyle = `rgba(123, 196, 255, ${0.025 + alpha * 0.05})`;
@@ -3115,10 +3455,10 @@ function buildResultOverlayCache(config) {
   mctx.shadowBlur = 0;
   mctx.fillStyle = accent;
   mctx.font = retryHovered ? "800 16px 'Barlow Condensed', 'Trebuchet MS', sans-serif" : "800 15px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  mctx.fillText("RETRY SORTIE", primaryButtonX + buttonW / 2, buttonY - 2);
+  mctx.fillText(config.primaryLabel || "RETRY SORTIE", primaryButtonX + buttonW / 2, buttonY - 2);
   mctx.fillStyle = retryHovered ? "rgba(120, 62, 41, 0.92)" : "rgba(132, 74, 54, 0.82)";
   mctx.font = retryHovered ? "700 10px 'IBM Plex Sans', 'Segoe UI', sans-serif" : "700 9px 'IBM Plex Sans', 'Segoe UI', sans-serif";
-  mctx.fillText("Press Enter", primaryButtonX + buttonW / 2, buttonY + 13);
+  mctx.fillText(config.primarySub || "Press Enter", primaryButtonX + buttonW / 2, buttonY + 13);
 
   const secondaryGrad = mctx.createLinearGradient(secondaryButtonX, buttonY - 22, secondaryButtonX, buttonY - 22 + buttonH);
   secondaryGrad.addColorStop(0, hangarHovered ? "rgba(255, 255, 255, 0.5)" : "rgba(255, 255, 255, 0.38)");
@@ -3151,6 +3491,13 @@ function buildResultOverlayCache(config) {
     { id: "retry", x: primaryButtonX, y: buttonY - 22, w: buttonW, h: buttonH },
     { id: "hangar", x: secondaryButtonX, y: buttonY - 22, w: buttonW, h: buttonH }
   );
+
+  if (config.footerHint) {
+    mctx.textAlign = "center";
+    mctx.fillStyle = "rgba(70, 103, 129, 0.84)";
+    mctx.font = "700 10px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+    mctx.fillText(config.footerHint, canvas.width / 2, cardY + cardH - 14);
+  }
 
   mctx.restore();
   return c;
@@ -3295,6 +3642,10 @@ function drawMenuAirframeIndexCard(targetCtx, airframe, x, y, w, h, selected, ho
   targetCtx.font = "600 12px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
   targetCtx.fillText(airframe.meta, x + 118, y + 75);
 
+  targetCtx.fillStyle = selected ? "rgba(255, 223, 154, 0.96)" : "rgba(194, 224, 242, 0.78)";
+  targetCtx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  targetCtx.fillText(fitText(targetCtx, airframe.statSummary, w - 134), x + 118, y + 93);
+
   targetCtx.textAlign = "right";
   targetCtx.fillStyle = selected ? "rgba(255, 216, 138, 0.84)" : "rgba(137, 204, 235, 0.42)";
   targetCtx.font = "700 18px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
@@ -3348,8 +3699,9 @@ function buildMenuOverlayCache() {
   const chips = [
     { label: "WASD / Arrows", value: "Move" },
     { label: "Space", value: "Fire" },
+    { label: "M", value: "Missile" },
     { label: "F", value: "Fullscreen" },
-    { label: "Enter", value: "Restart" },
+    { label: "Enter", value: "Skip / Confirm" },
   ];
   mctx.fillStyle = "rgba(6, 19, 31, 0.58)";
   mctx.beginPath();
@@ -3488,9 +3840,83 @@ function drawPauseOverlay() {
   ctx.restore();
 }
 
+function drawUpgradeOverlay() {
+  if (state.mode !== "upgrade") return;
+
+  upgradeCardHitboxes.length = 0;
+  ctx.save();
+  ctx.fillStyle = "rgba(4, 14, 24, 0.54)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const panelW = 664;
+  const panelH = 272;
+  const panelX = (canvas.width - panelW) / 2;
+  const panelY = 118;
+  ctx.fillStyle = "rgba(8, 28, 46, 0.96)";
+  ctx.beginPath();
+  ctx.roundRect(panelX, panelY, panelW, panelH, 24);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(135, 215, 255, 0.32)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#7fdcff";
+  ctx.font = "700 12px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  ctx.fillText(`STAGE ${state.stage} CLEAR // SELECT REFIT`, panelX + 24, panelY + 28);
+  ctx.fillStyle = "#f3f8ff";
+  ctx.font = "700 30px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  ctx.fillText(`Choose the next sortie edge for Stage ${Math.min(STAGE_COUNT, state.stage + 1)}`, panelX + 24, panelY + 66);
+  ctx.fillStyle = "#d9eaf8";
+  ctx.font = "600 13px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+  ctx.fillText("Left / right to cycle. Enter or click to lock one refit before re-engaging.", panelX + 24, panelY + 90);
+
+  const cardY = panelY + 114;
+  const cardW = 196;
+  const cardH = 118;
+  const gap = 14;
+  state.upgradeChoices.forEach((choice, index) => {
+    const x = panelX + 24 + index * (cardW + gap);
+    const selected = index === state.upgradeSelection;
+    const hovered = index === hoveredUpgradeIndex;
+    const glow = selected ? "rgba(255, 214, 132, 0.24)" : hovered ? "rgba(126, 220, 255, 0.14)" : "rgba(255,255,255,0.06)";
+    const border = selected ? "rgba(255, 208, 122, 0.62)" : hovered ? "rgba(126, 220, 255, 0.34)" : "rgba(126, 220, 255, 0.14)";
+    const titleColor = selected ? "#fff3d9" : "#f2f8ff";
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.roundRect(x, cardY, cardW, cardH, 18);
+    ctx.fill();
+    ctx.strokeStyle = border;
+    ctx.lineWidth = selected ? 1.5 : 1.1;
+    ctx.stroke();
+
+    ctx.fillStyle = selected ? "rgba(255, 216, 138, 0.92)" : "rgba(126, 220, 255, 0.88)";
+    ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+    ctx.fillText(`REFIT ${index + 1}`, x + 16, cardY + 18);
+    ctx.fillStyle = titleColor;
+    ctx.font = "800 18px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+    ctx.fillText(choice.label, x + 16, cardY + 44);
+    ctx.fillStyle = selected ? "rgba(255, 224, 168, 0.92)" : "rgba(255, 211, 106, 0.84)";
+    ctx.font = "700 11px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+    ctx.fillText(choice.statLine, x + 16, cardY + 62);
+    ctx.fillStyle = "rgba(214, 231, 244, 0.88)";
+    ctx.font = "600 11px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+    const lines = wrapTextLines(ctx, choice.description, cardW - 32, 3);
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], x + 16, cardY + 82 + i * 13);
+    }
+    upgradeCardHitboxes.push({ id: String(index), index, x, y: cardY, w: cardW, h: cardH });
+  });
+  ctx.restore();
+}
+
 function drawModeOverlay() {
   if (state.mode === "menu") {
     drawMenuOverlay();
+    return;
+  }
+  if (state.mode === "upgrade") {
+    drawUpgradeOverlay();
     return;
   }
   if (state.mode === "won") {
@@ -3501,6 +3927,9 @@ function drawModeOverlay() {
         subtitle: "Hostile formation neutralized. Debrief ready.",
         accent: "#b97e3f",
         accentSoft: "rgba(233, 200, 145, 0.3)",
+        primaryLabel: "NEW SORTIE",
+        primarySub: "Press Enter",
+        footerHint: "Esc returns to the hangar",
       });
     }
     if (wonOverlayCanvas) ctx.drawImage(wonOverlayCanvas, 0, 0);
@@ -3511,9 +3940,12 @@ function drawModeOverlay() {
       lostOverlayCanvas = buildResultOverlayCache({
         kicker: "MISSION FAILED",
         title: "Sortie Lost",
-        subtitle: "Airframe down before sector clearance.",
+        subtitle: `Stage ${state.stage} checkpoint is ready for an immediate relaunch.`,
         accent: "#b86d57",
         accentSoft: "rgba(222, 163, 145, 0.28)",
+        primaryLabel: "RETRY STAGE",
+        primarySub: "Press Enter",
+        footerHint: "Press R for a full campaign restart, or Esc for the hangar",
       });
     }
     if (lostOverlayCanvas) ctx.drawImage(lostOverlayCanvas, 0, 0);
@@ -3595,13 +4027,14 @@ function drawMenuOverlay() {
   const chips = [
     { label: "WASD / Arrows", value: "Move" },
     { label: "Space", value: "Fire" },
+    { label: "M", value: "Missile" },
     { label: "F", value: "Fullscreen" },
-    { label: "Enter", value: "Restart" },
+    { label: "Enter", value: "Skip / Confirm" },
   ];
   const chipY = controlsY + 1;
-  const chipW = 138;
+  const chipW = 112;
   const chipH = 28;
-  const chipGap = 8;
+  const chipGap = 6;
   chips.forEach((chip, idx) => {
     const x = panelX + 34 + idx * (chipW + chipGap);
     drawChip(ctx, x, chipY, chipW, chipH, chip);
@@ -4115,6 +4548,7 @@ function render() {
   }
   drawPlayer();
   drawBossApproachBar();
+  drawBossPhaseBanner();
   drawBossWarningOverlay();
   drawStageClearNoticeOverlay();
   drawPauseOverlay();
@@ -4167,6 +4601,13 @@ function getResultButtonHit(point) {
   ) || null;
 }
 
+function getUpgradeCardHit(point) {
+  if (state.mode !== "upgrade") return null;
+  return upgradeCardHitboxes.find(
+    (box) => point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.h
+  ) || null;
+}
+
 function selectAdjacentAirframe(direction) {
   if (state.mode !== "menu") return;
   const order = AIRFRAME_ORDER;
@@ -4183,6 +4624,23 @@ window.addEventListener("keydown", (e) => {
   if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Space", "Spacebar"].includes(e.key)) {
     e.preventDefault();
   }
+  if (state.mode === "upgrade" && !e.repeat) {
+    if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      state.upgradeSelection =
+        (state.upgradeSelection - 1 + state.upgradeChoices.length) % Math.max(1, state.upgradeChoices.length);
+      render();
+      return;
+    }
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      state.upgradeSelection = (state.upgradeSelection + 1) % Math.max(1, state.upgradeChoices.length);
+      render();
+      return;
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      chooseUpgrade(state.upgradeSelection);
+      return;
+    }
+  }
   if (state.mode === "playing" && !e.repeat && (e.key === "Escape" || e.key === "p" || e.key === "P")) {
     e.preventDefault();
     setGamePaused(!state.paused);
@@ -4191,6 +4649,10 @@ window.addEventListener("keydown", (e) => {
   if (state.mode === "menu" && !e.repeat) {
     if (e.key === "ArrowLeft") selectAdjacentAirframe(-1);
     if (e.key === "ArrowRight") selectAdjacentAirframe(1);
+    if (["1", "2", "3"].includes(e.key) && allSpritesReady()) {
+      startStageCheckpoint(Number(e.key));
+      return;
+    }
   }
   buttonToKey(e.key, true);
 
@@ -4198,9 +4660,25 @@ window.addEventListener("keydown", (e) => {
     fireMissile();
   }
 
-  if (e.key === "Enter" && (state.mode === "won" || state.mode === "lost" || state.mode === "menu")) {
+  if (e.key === "Enter" && state.mode === "playing" && !e.repeat && skipCinematicTimers()) {
+    render();
+    return;
+  }
+
+  if (e.key === "Enter" && state.mode === "lost") {
+    restartCurrentStage();
+    return;
+  }
+
+  if (e.key === "Enter" && (state.mode === "won" || state.mode === "menu")) {
     if (state.mode === "menu" && !allSpritesReady()) return;
     resetGame();
+    return;
+  }
+
+  if ((e.key === "r" || e.key === "R") && state.mode === "lost" && !e.repeat) {
+    resetGame();
+    return;
   }
 
   if (e.key === "Escape" && (state.mode === "won" || state.mode === "lost") && !state.paused) {
@@ -4224,19 +4702,27 @@ canvas.addEventListener("mousemove", (event) => {
   const nextMenuHoverId = menuHit?.id || null;
   const resultHit = getResultButtonHit(point);
   const nextResultHoverId = resultHit?.id || null;
-  if (nextMenuHoverId !== menuHoveredAirframeId || nextResultHoverId !== hoveredResultButton) {
+  const upgradeHit = getUpgradeCardHit(point);
+  const nextUpgradeIndex = upgradeHit?.index ?? -1;
+  if (
+    nextMenuHoverId !== menuHoveredAirframeId ||
+    nextResultHoverId !== hoveredResultButton ||
+    nextUpgradeIndex !== hoveredUpgradeIndex
+  ) {
     menuHoveredAirframeId = nextMenuHoverId;
     hoveredResultButton = nextResultHoverId;
-    canvas.style.cursor = nextMenuHoverId || nextResultHoverId ? "pointer" : "";
+    hoveredUpgradeIndex = nextUpgradeIndex;
+    canvas.style.cursor = nextMenuHoverId || nextResultHoverId || nextUpgradeIndex >= 0 ? "pointer" : "";
     invalidateUiCaches();
     render();
   }
 });
 
 canvas.addEventListener("mouseleave", () => {
-  if (menuHoveredAirframeId == null && hoveredResultButton == null) return;
+  if (menuHoveredAirframeId == null && hoveredResultButton == null && hoveredUpgradeIndex < 0) return;
   menuHoveredAirframeId = null;
   hoveredResultButton = null;
+  hoveredUpgradeIndex = -1;
   canvas.style.cursor = "";
   invalidateUiCaches();
   render();
@@ -4247,13 +4733,20 @@ canvas.addEventListener("click", (event) => {
   const resultHit = getResultButtonHit(point);
   if (resultHit) {
     if (resultHit.id === "retry") {
-      resetGame();
+      if (state.mode === "lost") restartCurrentStage();
+      else resetGame();
       return;
     }
     if (resultHit.id === "hangar") {
       returnToMenu();
       return;
     }
+  }
+
+  const upgradeHit = getUpgradeCardHit(point);
+  if (upgradeHit) {
+    chooseUpgrade(upgradeHit.index);
+    return;
   }
 
   const hit = getMenuAirframeHit(point);
@@ -4268,10 +4761,12 @@ startBtn.addEventListener("click", () => {
 });
 
 function renderGameToText() {
+  const combatProfile = getCombinedCombatProfile();
   const payload = {
     mode: state.mode,
     paused: !!state.paused,
     selectedAirframe: selectedAirframeId,
+    airframeTrait: getSelectedAirframe().statSummary,
     coordinateSystem: "origin at top-left; x rightward; y downward; units are canvas pixels",
     canvas: { width: canvas.width, height: canvas.height },
     player: {
@@ -4282,6 +4777,7 @@ function renderGameToText() {
       width: state.player.w,
       height: state.player.h,
       shield: state.player.shield,
+      shieldCap: state.playerMaxShield,
       spreadTimer: Number(state.player.spreadTimer.toFixed(2)),
     },
     bullets: state.bullets.slice(0, 14).map((b) => ({ x: Number(b.x.toFixed(1)), y: Number(b.y.toFixed(1)), vx: Number((b.vx || 0).toFixed(1)) })),
@@ -4316,13 +4812,25 @@ function renderGameToText() {
       sample: state.muzzleFlashes.slice(0, 4).map((m) => ({ x: Number(m.x.toFixed(1)), y: Number(m.y.toFixed(1)), life: Number(m.life.toFixed(2)) })),
     },
     score: state.score,
+    stageProgress: stageDifficultyScore(),
+    bossTriggerScore: state.bossSpawnScoreDelta || state.bossSpawnScore,
     kills: state.kills,
     targetScore: state.targetScore,
     stage: state.stage,
     stageCount: STAGE_COUNT,
+    combatProfile: {
+      speed: Number(combatProfile.speed.toFixed(1)),
+      fireInterval: Number(combatProfile.fireInterval.toFixed(3)),
+      spreadFireInterval: Number(combatProfile.spreadFireInterval.toFixed(3)),
+      missileCooldown: Number(combatProfile.missileCooldown.toFixed(3)),
+      spreadDuration: Number(combatProfile.spreadDuration.toFixed(2)),
+    },
+    runUpgrades: state.runUpgradeHistory.slice(),
+    upgradeChoices: state.mode === "upgrade" ? state.upgradeChoices.map((choice) => choice.label) : [],
     boss: {
       spawned: state.bossSpawned,
       defeated: state.bossDefeated,
+      phaseBanner: Number(state.phaseBannerTimer.toFixed(2)),
     },
     lives: state.lives,
     timers: {

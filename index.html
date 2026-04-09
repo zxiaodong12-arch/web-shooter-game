@@ -35,14 +35,15 @@
           </div>
           <p id="tactical-intel-stage" class="tactical-intel__stage"></p>
           <div class="tactical-intel__mission">
-            <p class="tactical-intel__mission-label">Mission count</p>
+            <p id="tactical-intel-mission-label" class="tactical-intel__mission-label">Boss trigger</p>
             <p class="tactical-intel__score">
               <span id="tactical-intel-score">0</span><span class="tactical-intel__score-denom"> / <span id="tactical-intel-target">30</span></span>
             </p>
+            <p class="tactical-intel__meta">Total score <span id="tactical-intel-total">0</span></p>
             <p class="tactical-intel__lives">Lives <span id="tactical-intel-lives">3</span></p>
           </div>
           <div class="tactical-intel__meter-block">
-            <p class="tactical-intel__meter-label">Engagement progress</p>
+            <p class="tactical-intel__meter-label">Boss trigger gauge</p>
             <div class="tactical-intel__meter">
               <div id="tactical-intel-meter-fill" class="tactical-intel__meter-fill"></div>
             </div>
@@ -117,7 +118,7 @@
           </div>
           <div class="airframe-dossier__footer">
             <p class="airframe-dossier__footer-label">Profile Status</p>
-            <p class="airframe-dossier__footnote">Visual profile only // performance unchanged</p>
+            <p id="airframe-dossier-footnote" class="airframe-dossier__footnote">Light trait active // see handling notes</p>
           </div>
         </aside>
         </div>
@@ -125,7 +126,7 @@
       <footer class="bottom-bar" aria-label="Preflight details">
         <p id="briefing-copy" class="bottom-bar__brief">Scramble immediately — intercept hostiles and break through to the boss sortie.</p>
         <span class="bottom-bar__divider" aria-hidden="true"></span>
-        <p id="game-tip" class="bottom-bar__controls">Move: WASD or arrows · Shoot: Space · Pause: P or Esc · Fullscreen: F · Restart: Enter</p>
+        <p id="game-tip" class="bottom-bar__controls">Move: WASD or arrows · Shoot: Space · Missile: M · Pause: P or Esc · Skip/Confirm: Enter · Fullscreen: F · Practice: 1 / 2 / 3</p>
       </footer>
     </main>
     <script src="./game.js?v=202604048"></script>
