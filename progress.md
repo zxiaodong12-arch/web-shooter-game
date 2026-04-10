@@ -218,6 +218,18 @@ TODO / suggestions for next agent:
 - Lowered the Kongo-class battleship difficulty in `game.js`:
   - reduced HP from 68 to 52
   - increased incoming damage effectiveness (`armorBulletScale` 0.72 -> 0.88, `armorMissileScale` 0.58 -> 0.74)
+- Refactor pass 1 for maintainability:
+  - Added `js/game-content.js` and moved stable content/configuration out of the main runtime file: airframes, stage/boss text + loadout helpers, combat base stats, performance caps, and run-upgrade definitions.
+  - Updated `index.html` to load the content script before `game.js`.
+  - Simplified `game.js` so the main file now consumes shared content via `window.GameContent`; upgrade application now reads declarative `modifiers` instead of inline state-mutating closures.
+- Refactor pass 2 for maintainability:
+  - Added `js/game-assets.js` as an asset-store factory that now owns player/enemy/ship/background/weapon image loading and sprite preprocessing.
+  - Updated `game.js` to consume asset state via `assetStore` instead of directly declaring image-loader globals in the main runtime file.
+  - Kept gameplay/state flow unchanged; this pass is strictly about separating resource bootstrap from gameplay logic.
+- Content config data-ization pass:
+  - Expanded `js/game-content.js` with `STAGE_DEFS`, `BOSS_VARIANTS`, and `AIRCRAFT_MODELS` so stage pacing, labels, warning copy, sprite preferences, boss stats, and stage presentation live in config instead of scattered `state.stage >= 2/3` branches.
+  - Updated `game.js` to read stage enemy model pools, boss stats, result-band labels, warning themes, and sprite resolution from config helpers.
+  - Goal of this pass: make future stage additions or balance passes mostly content edits rather than gameplay-file branch edits.
   - shortened shield lockout window from 0.26s to 0.18s
   - slowed boss patrol speed from 26 to 18
   - lengthened ship-phase firing cooldowns so each attack pattern has more dodge/recovery space

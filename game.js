@@ -42,52 +42,31 @@ const tacticalIntelAugmentsEl = document.getElementById("tactical-intel-augments
 canvas.tabIndex = 0;
 
 const debugFlags = new URLSearchParams(window.location.search);
-
-const AIRFRAMES = {
-  p51d: {
-    id: "p51d",
-    assetPath: "./assets/aircraft/player/usa/P-51D-removebg-preview.png?v=20260410c",
-    armoredAssetPath: "./assets/aircraft/player/usa/P-51D-armored-removebg-preview.png?v=20260410c",
-    title: "P-51D Mustang",
-    meta: "USN / Long-Range Strike",
-    shortCode: "01",
-    dossierTag: "Strike Package",
-    dossierBody: [
-      "Long-range escort tuned for repeated missile re-attack windows and heavier plating.",
-      "Carries one extra armor plate so recovery windows stay forgiving under pressure.",
-    ],
-    statSummary: "Extra armor plate // faster missile recycle",
-    combatProfile: {
-      speedScale: 1,
-      fireRateScale: 1,
-      missileCooldownScale: 0.88,
-      shieldCapBonus: 0,
-      armorCapBonus: 1,
-      spreadDurationBonus: 0.8,
-    },
-  },
-  spitfire: {
-    id: "spitfire",
-    assetPath: "./assets/aircraft/player/raf/Spitfire-ZT-D-removebg-preview.png?v=20260401a",
-    title: "Supermarine Spitfire",
-    meta: "RN / Agile Interceptor",
-    shortCode: "02",
-    dossierTag: "Knife-Fight Interceptor",
-    dossierBody: [
-      "Quick-turn interceptor built for fast sector response.",
-      "Sharper throttle response and a tighter primary-gun rhythm.",
-    ],
-    statSummary: "Higher top speed // tighter main-gun cadence",
-    combatProfile: {
-      speedScale: 1.08,
-      fireRateScale: 0.94,
-      missileCooldownScale: 1.06,
-      shieldCapBonus: 0,
-      armorCapBonus: 0,
-      spreadDurationBonus: 0,
-    },
-  },
-};
+const {
+  AIRFRAMES,
+  STAGE_COUNT,
+  ENEMY_CAPS,
+  PERFORMANCE_CAPS,
+  BASE_PLAYER_STATS,
+  PLAYER_INVULN_DURATION,
+  RUN_UPGRADE_POOL,
+  getStageProgress,
+  getStageBossVariant,
+  getBossDisplayName,
+  getBossWarningText,
+  getStageLoadout,
+  getStageStartScore,
+  getBossPhaseDescriptor,
+  getStageDefinition,
+  getTheatreIntelBrief,
+  pickNormalEnemyModel,
+  getEliteEnemyModel,
+  getBossConfig,
+  getStageResultBandLabel,
+  getStageBackgroundFill,
+  getAircraftSpriteKeys,
+  getShipSpriteKey,
+} = window.GameContent;
 const AIRFRAME_ORDER = Object.keys(AIRFRAMES);
 let selectedAirframeId = "p51d";
 const menuAirframeHitboxes = [];
@@ -140,52 +119,24 @@ function getScaledSpriteVariant(baseCanvas, targetHeight, step = 4) {
   return variant;
 }
 
-const playerImage = new Image();
-let playerSpriteCanvas = null;
-let playerSpriteReady = false;
-playerImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(playerImage);
-  if (!offscreen) return;
-  playerSpriteCanvas = offscreen;
-  playerSpriteReady = true;
-  if (canRender) render();
-});
-
-const playerArmoredImage = new Image();
-let playerArmoredSpriteCanvas = null;
-let playerArmoredSpriteReady = false;
-playerArmoredImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(playerArmoredImage);
-  if (!offscreen) return;
-  playerArmoredSpriteCanvas = offscreen;
-  playerArmoredSpriteReady = true;
-  if (canRender) render();
-});
-
-for (const airframe of Object.values(AIRFRAMES)) {
-  airframe.previewImage = new Image();
-  airframe.previewCanvas = null;
-  airframe.previewReady = false;
-  airframe.previewImage.addEventListener("load", () => {
-    const offscreen = buildSpriteCanvas(airframe.previewImage);
-    if (!offscreen) return;
-    airframe.previewCanvas = offscreen;
-    airframe.previewReady = true;
+const assetStore = window.GameAssetFactory.createGameAssetStore({
+  AIRFRAMES,
+  canvas,
+  buildSpriteCanvas,
+  getScaledSpriteVariant,
+  requestRender: () => {
     if (canRender) render();
-  });
-  airframe.previewImage.src = airframe.assetPath;
-}
+  },
+});
+const playerAssets = assetStore.player;
+const enemyAssets = assetStore.enemies;
+const shipAssets = assetStore.ships;
+const backgroundAssets = assetStore.background;
+const weaponAssets = assetStore.weapons;
 
 function loadSelectedAirframe() {
   const airframe = AIRFRAMES[selectedAirframeId] || AIRFRAMES.p51d;
-  playerSpriteReady = false;
-  playerSpriteCanvas = null;
-  playerImage.src = airframe.assetPath;
-  playerArmoredSpriteReady = false;
-  playerArmoredSpriteCanvas = null;
-  if (airframe.armoredAssetPath) {
-    playerArmoredImage.src = airframe.armoredAssetPath;
-  }
+  assetStore.loadSelectedAirframe(selectedAirframeId);
   applyCombatProfile();
   invalidateUiCaches();
   syncAirframeDossier();
@@ -209,396 +160,12 @@ function syncAirframeDossier() {
   if (airframeDossierFootnoteEl) airframeDossierFootnoteEl.textContent = airframe.statSummary;
 }
 
-const enemyClaudeImage = new Image();
-let enemyClaudeSpriteCanvas = null;
-let enemyClaudeSpriteReady = false;
-enemyClaudeImage.src = "./assets/aircraft/enemies/ijn/A5M-Claude-removebg-preview.png?v=20260401a";
-enemyClaudeImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(enemyClaudeImage, Math.PI);
-  if (!offscreen) return;
-  enemyClaudeSpriteCanvas = offscreen;
-  enemyClaudeSpriteReady = true;
-  render();
-});
-
-const enemyZeroImage = new Image();
-let enemyZeroSpriteCanvas = null;
-let enemyZeroSpriteReady = false;
-enemyZeroImage.src = "./assets/aircraft/enemies/ijn/A6M2-Zero-Model-21-removebg-preview.png?v=20260401a";
-enemyZeroImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(enemyZeroImage, Math.PI);
-  if (!offscreen) return;
-  enemyZeroSpriteCanvas = offscreen;
-  enemyZeroSpriteReady = true;
-  eliteSpriteCanvas = offscreen;
-  eliteSpriteReady = true;
-  render();
-});
-
-let eliteSpriteCanvas = null;
-let eliteSpriteReady = false;
-
-const enemyA6M5Image = new Image();
-let enemyA6M5SpriteCanvas = null;
-let enemyA6M5SpriteReady = false;
-enemyA6M5Image.src = "./assets/aircraft/enemies/ijn/A6M5-Zero-Model-52-removebg-preview.png?v=20260402d";
-enemyA6M5Image.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(enemyA6M5Image, Math.PI);
-  if (!offscreen) return;
-  enemyA6M5SpriteCanvas = offscreen;
-  enemyA6M5SpriteReady = true;
-  render();
-});
-
-const enemyN1K2Image = new Image();
-let enemyN1K2SpriteCanvas = null;
-let enemyN1K2SpriteReady = false;
-enemyN1K2Image.src = "./assets/aircraft/enemies/ijn/N1K2-J-Shiden-Kai-removebg-preview.png?v=20260402d";
-enemyN1K2Image.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(enemyN1K2Image, Math.PI);
-  if (!offscreen) return;
-  enemyN1K2SpriteCanvas = offscreen;
-  enemyN1K2SpriteReady = true;
-  render();
-});
-
-const enemyA7M2Image = new Image();
-let enemyA7M2SpriteCanvas = null;
-let enemyA7M2SpriteReady = false;
-enemyA7M2Image.src = "./assets/aircraft/enemies/ijn/A7M2-Reppu-removebg-preview.png?v=20260403a";
-enemyA7M2Image.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(enemyA7M2Image, Math.PI);
-  if (!offscreen) return;
-  enemyA7M2SpriteCanvas = offscreen;
-  enemyA7M2SpriteReady = true;
-  render();
-});
-
-const enemyJ2MImage = new Image();
-let enemyJ2MSpriteCanvas = null;
-let enemyJ2MSpriteReady = false;
-enemyJ2MImage.src = "./assets/aircraft/enemies/ijn/J2M-Raiden-Jack-removebg-preview.png?v=20260403a";
-enemyJ2MImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(enemyJ2MImage, Math.PI);
-  if (!offscreen) return;
-  enemyJ2MSpriteCanvas = offscreen;
-  enemyJ2MSpriteReady = true;
-  render();
-});
-
-const bossImage = new Image();
-let bossSpriteCanvas = null;
-let bossSpriteReady = false;
-bossImage.src = "./assets/aircraft/enemies/boss/boss_plane_transparent.png?v=20260330u";
-bossImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(bossImage, Math.PI);
-  if (!offscreen) return;
-  bossSpriteCanvas = offscreen;
-  bossSpriteReady = true;
-  render();
-});
-
-const kongoImage = new Image();
-let kongoSpriteCanvas = null;
-let kongoSpriteReady = false;
-kongoImage.src = "./assets/naval/bosses/KONGO-CLASS-removebg-preview.png?v=20260404ship";
-kongoImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(kongoImage);
-  if (!offscreen) return;
-  kongoSpriteCanvas = offscreen;
-  kongoSpriteReady = true;
-  render();
-});
-
-const nagatoImage = new Image();
-let nagatoSpriteCanvas = null;
-let nagatoSpriteReady = false;
-nagatoImage.src = "./assets/naval/candidates/NAGATO-CLASS-removebg-preview.png?v=20260404ship";
-nagatoImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(nagatoImage);
-  if (!offscreen) return;
-  nagatoSpriteCanvas = offscreen;
-  nagatoSpriteReady = true;
-  render();
-});
-
-const yamatoImage = new Image();
-let yamatoSpriteCanvas = null;
-let yamatoSpriteReady = false;
-yamatoImage.src = "./assets/naval/candidates/YAMATO-CLASS-removebg-preview.png?v=20260404ship";
-yamatoImage.addEventListener("load", () => {
-  const offscreen = buildSpriteCanvas(yamatoImage);
-  if (!offscreen) return;
-  yamatoSpriteCanvas = offscreen;
-  yamatoSpriteReady = true;
-  render();
-});
-
-// Runtime background image (drawn into the canvas, behind stars/glow).
-const runtimeBgImage = new Image();
-let runtimeBgImageReady = false;
-let runtimeBgDrawW = 0;
-let runtimeBgDrawH = 0;
-let runtimeBgCoverCanvas = null;
-let runtimeBgCoverReady = false;
-// "applied" version is more blurred/clean for HUD readability.
-runtimeBgImage.src = "./assets/runtime-bg-pacific-no-text-no-flags-1600x1120.png?v=20260403bg1";
-runtimeBgImage.addEventListener("load", () => {
-  runtimeBgImageReady = true;
-  // Precompute cover scaling so per-frame parallax is just offsets + drawImage.
-  const padding = 22;
-  const targetW = canvas.width + padding * 2;
-  const targetH = canvas.height + padding * 2;
-  const scale = Math.max(targetW / runtimeBgImage.naturalWidth, targetH / runtimeBgImage.naturalHeight);
-  runtimeBgDrawW = runtimeBgImage.naturalWidth * scale;
-  runtimeBgDrawH = runtimeBgImage.naturalHeight * scale;
-
-  // Blur once into an offscreen canvas so per-frame drawing stays cheap.
-  const c = document.createElement("canvas");
-  c.width = Math.ceil(runtimeBgDrawW);
-  c.height = Math.ceil(runtimeBgDrawH);
-  const gctx = c.getContext("2d");
-  if (gctx) {
-    gctx.clearRect(0, 0, c.width, c.height);
-    gctx.save();
-    // Make the source image read as "texture" only.
-    // Keep the blueprint texture visible enough under HUD glass.
-    // (We already blur it once into an offscreen canvas; do not over-blur or it disappears.)
-    gctx.globalAlpha = 1;
-    // Tune for "environment layer": keep it readable but stop it from抢HUD细节。
-    gctx.filter = "blur(3.2px) saturate(0.88) brightness(0.98) contrast(0.92)";
-    gctx.drawImage(runtimeBgImage, 0, 0, c.width, c.height);
-    gctx.restore();
-
-    // Gentle darkening overlay to keep HUD readable.
-    gctx.fillStyle = "rgba(8, 28, 46, 0.2)";
-    gctx.fillRect(0, 0, c.width, c.height);
-    runtimeBgCoverCanvas = c;
-    runtimeBgCoverReady = true;
-  }
-
-  render();
-});
-
-const bulletImage = new Image();
-let bulletSpriteCanvas = null;
-let bulletSpriteReady = false;
-let bulletSpriteVariant = null;
-bulletImage.src = "./assets/weapons/bullets/bullet.png?v=20260330u";
-bulletImage.addEventListener("load", () => {
-  const offscreen = document.createElement("canvas");
-  offscreen.width = bulletImage.naturalWidth;
-  offscreen.height = bulletImage.naturalHeight;
-  const offscreenCtx = offscreen.getContext("2d");
-  if (!offscreenCtx) return;
-  offscreenCtx.drawImage(bulletImage, 0, 0);
-  bulletSpriteCanvas = offscreen;
-  bulletSpriteVariant = getScaledSpriteVariant(offscreen, 22, 1);
-  bulletSpriteReady = true;
-  render();
-});
-
-const enemyBulletKinds = ["normal", "elite", "boss"];
-const enemyBulletSpriteCanvases = {
-  normal: null,
-  elite: null,
-  boss: null,
-};
-const enemyBulletRenderSprites = {
-  normal: null,
-  elite: null,
-  boss: null,
-};
-const enemyBulletSpriteReady = {
-  normal: false,
-  elite: false,
-  boss: false,
-};
-
-enemyBulletKinds.forEach((kind) => {
-  const enemyBulletImage = new Image();
-  enemyBulletImage.src = `./assets/weapons/bullets/enemy_bullet_${kind}.png?v=20260402b`;
-  enemyBulletImage.addEventListener("load", () => {
-    const offscreen = buildSpriteCanvas(enemyBulletImage, Math.PI);
-    if (!offscreen) return;
-    enemyBulletSpriteCanvases[kind] = offscreen;
-    enemyBulletRenderSprites[kind] = getScaledSpriteVariant(offscreen, kind === "boss" ? 30 : 25, 1);
-    enemyBulletSpriteReady[kind] = true;
-    render();
-  });
-});
-
-const missileImage = new Image();
-let missileSpriteCanvas = null;
-let missileSpriteReady = false;
-// Rocket front view asset provided by you.
-missileImage.src = "./assets/weapons/missiles/daodan.png?v=20260330u";
-missileImage.addEventListener("load", () => {
-  const offscreen = document.createElement("canvas");
-  offscreen.width = missileImage.naturalWidth;
-  offscreen.height = missileImage.naturalHeight;
-  const offscreenCtx = offscreen.getContext("2d");
-  if (!offscreenCtx) return;
-  offscreenCtx.drawImage(missileImage, 0, 0);
-  missileSpriteCanvas = offscreen;
-  missileSpriteReady = true;
-  render();
-});
-
-// Pre-render a muzzle flash sprite to avoid per-flash radialGradient allocations.
-let muzzleFlashSpriteCanvas = null;
-let muzzleFlashSpriteSize = 0;
-function buildMuzzleFlashSprite() {
-  const size = 24;
-  muzzleFlashSpriteSize = size;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const mctx = c.getContext("2d");
-  if (!mctx) return;
-
-  const cx = size / 2;
-  const cy = size / 2;
-  const grad = mctx.createRadialGradient(cx, cy, 1, cx, cy, 12);
-  grad.addColorStop(0, "rgba(255,250,219,0.95)");
-  grad.addColorStop(0.35, "rgba(255,193,92,0.85)");
-  grad.addColorStop(1, "rgba(255,193,92,0)");
-
-  // Upward triangle portion.
-  mctx.fillStyle = grad;
-  mctx.beginPath();
-  mctx.moveTo(cx, cy - 7);
-  mctx.lineTo(cx - 5.5, cy + 4.5);
-  mctx.lineTo(cx + 5.5, cy + 4.5);
-  mctx.closePath();
-  mctx.fill();
-
-  // Central glow dot portion.
-  mctx.fillStyle = grad;
-  mctx.beginPath();
-  mctx.arc(cx, cy, 8, 0, Math.PI * 2);
-  mctx.fill();
-
-  muzzleFlashSpriteCanvas = c;
-}
-
-buildMuzzleFlashSprite();
-
-const STAGE_COUNT = 3;
-
-const ENEMY_CAPS = {
-  normal: 12,
-  elite: 3,
-  airTotal: 14,
-};
-
-const PERFORMANCE_CAPS = {
-  enemyBulletsMax: 160,
-  explosionParticlesMax: 420,
-  shockwavesMax: 56,
-  explosionParticlesPerFrame: 72,
-  shockwavesPerFrame: 3,
-};
-
 const effectSpawnBudget = {
   explosions: 0,
   shockwaves: 0,
 };
 
-function getStageProgress(stage) {
-  if (stage <= 1) return { bossSpawnScore: 30, targetScore: 30 };
-  if (stage === 2) return { bossSpawnScore: 55, targetScore: 60 };
-  return { bossSpawnScore: 90, targetScore: 95 };
-}
-
-function getStageBossVariant(stage) {
-  if (stage >= 3) return "yamato";
-  if (stage >= 2) return "nagato";
-  return "kongo";
-}
-
-function getBossDisplayName(variant) {
-  if (variant === "yamato") return "YAMATO-CLASS";
-  if (variant === "nagato") return "NAGATO-CLASS";
-  return "KONGO-CLASS";
-}
-
-function getBossWarningText(stage) {
-  if (stage >= 3) {
-    return {
-      ja: "大和型戦艦 接近",
-      zh: "大和级战列舰接近",
-      en: "YAMATO-CLASS BATTLESHIP APPROACHING",
-    };
-  }
-  if (stage >= 2) {
-    return {
-      ja: "長門型戦艦 接近",
-      zh: "长门级战列舰接近",
-      en: "NAGATO-CLASS BATTLESHIP APPROACHING",
-    };
-  }
-  return {
-    ja: "金剛型戦艦 接近",
-    zh: "金刚级战列舰接近",
-    en: "KONGO-CLASS BATTLESHIP APPROACHING",
-  };
-}
-
-function getStageLoadout(stage) {
-  if (stage >= 3) {
-    return {
-      act: "第三幕 · 决战海域",
-      airMainJa: "烈風",
-      airMainEn: "A7M2 REPPU",
-      airMainSrc: "./assets/aircraft/enemies/ijn/A7M2-Reppu-removebg-preview.png?v=20260403a",
-      airEliteJa: "雷電",
-      airEliteEn: "J2M RAIDEN",
-      airEliteSrc: "./assets/aircraft/enemies/ijn/J2M-Raiden-Jack-removebg-preview.png?v=20260403a",
-      bossJa: "大和級戦艦",
-      bossEn: "YAMATO-CLASS BATTLESHIP",
-      bossSrc: "./assets/naval/candidates/YAMATO-CLASS-removebg-preview.png?v=20260404ship",
-    };
-  }
-  if (stage >= 2) {
-    return {
-      act: "第二幕 · 深水拦截",
-      airMainJa: "零戦五二型",
-      airMainEn: "A6M5 ZERO MODEL 52",
-      airMainSrc: "./assets/aircraft/enemies/ijn/A6M5-Zero-Model-52-removebg-preview.png?v=20260402d",
-      airEliteJa: "紫電改",
-      airEliteEn: "N1K2 SHIDEN-KAI",
-      airEliteSrc: "./assets/aircraft/enemies/ijn/N1K2-J-Shiden-Kai-removebg-preview.png?v=20260402d",
-      bossJa: "長門級戦艦",
-      bossEn: "NAGATO-CLASS BATTLESHIP",
-      bossSrc: "./assets/naval/candidates/NAGATO-CLASS-removebg-preview.png?v=20260404ship",
-    };
-  }
-  return {
-    act: "第一幕 · 前沿接敌",
-    airMainJa: "九六艦戦",
-    airMainEn: "A5M CLAUDE",
-    airMainSrc: "./assets/aircraft/enemies/ijn/A5M-Claude-removebg-preview.png?v=20260401a",
-    airEliteJa: "零戦二一型",
-    airEliteEn: "A6M2 ZERO MODEL 21",
-    airEliteSrc: "./assets/aircraft/enemies/ijn/A6M2-Zero-Model-21-removebg-preview.png?v=20260401a",
-    bossJa: "金剛級戦艦",
-    bossEn: "KONGO-CLASS BATTLESHIP",
-    bossSrc: "./assets/naval/bosses/KONGO-CLASS-removebg-preview.png?v=20260404ship",
-  };
-}
-
-const BASE_PLAYER_STATS = {
-  speed: 340,
-  fireInterval: 0.17,
-  spreadFireInterval: 0.13,
-  missileCooldown: 1.6,
-  maxShield: 3,
-  maxArmor: 1,
-  spreadDuration: 7.5,
-};
 // Short i-frame/buffer after taking a hit to prevent rapid consecutive damage.
-const PLAYER_INVULN_DURATION = 0.22;
 
 function createDefaultRunBonuses() {
   return {
@@ -610,75 +177,6 @@ function createDefaultRunBonuses() {
     armorInvulnBonus: 0,
     spreadDurationBonus: 0,
   };
-}
-
-const RUN_UPGRADE_POOL = [
-  {
-    id: "afterburner-trim",
-    label: "Afterburner Trim",
-    shortLabel: "Afterburner",
-    description: "Loosens the airframe for faster lateral correction through dense bullet lanes.",
-    statLine: "+8% move speed",
-    apply() {
-      state.runBonuses.speedScale *= 1.08;
-    },
-  },
-  {
-    id: "gun-harmonization",
-    label: "Gun Harmonization",
-    shortLabel: "Gun Feed",
-    description: "Tightens wing-gun timing so the main battery cycles sooner on every burst.",
-    statLine: "-8% primary cooldown",
-    apply() {
-      state.runBonuses.fireRateScale *= 0.92;
-    },
-  },
-  {
-    id: "rapid-rack",
-    label: "Rapid Rack",
-    shortLabel: "Rapid Rack",
-    description: "Shortens missile recycle time so large contacts are pressured more often.",
-    statLine: "-14% missile cooldown",
-    apply() {
-      state.runBonuses.missileCooldownScale *= 0.86;
-    },
-  },
-  {
-    id: "shield-relay",
-    label: "Shield Relay",
-    shortLabel: "Shield Relay",
-    description: "Expands reserve shielding and immediately tops one charge back into the bay.",
-    statLine: "+1 shield cap and +1 charge",
-    apply() {
-      state.runBonuses.shieldCapBonus += 1;
-    },
-  },
-  {
-    id: "armor-belt",
-    label: "Armor Belt",
-    shortLabel: "Armor Belt",
-    description: "Adds a sacrificial armor plate and extends the recovery window after the plating breaks.",
-    statLine: "+1 armor and +0.16s guard",
-    apply() {
-      state.runBonuses.armorCapBonus += 1;
-      state.runBonuses.armorInvulnBonus += 0.16;
-    },
-  },
-  {
-    id: "wide-salvo",
-    label: "Wide Salvo",
-    shortLabel: "Wide Salvo",
-    description: "Keeps spread ammo active longer so elite waves can be pushed aggressively.",
-    statLine: "+2.2s spread duration",
-    apply() {
-      state.runBonuses.spreadDurationBonus += 2.2;
-    },
-  },
-];
-
-function getStageStartScore(stage) {
-  if (stage <= 1) return 0;
-  return getStageProgress(stage - 1).targetScore;
 }
 
 function getAirframeCombatProfile() {
@@ -719,18 +217,6 @@ function applyCombatProfile() {
   return profile;
 }
 
-function getBossPhaseDescriptor(boss, phase = boss?.phase || 1) {
-  if (!boss) return "Opening volley";
-  if (boss.variant === "yamato") {
-    if (phase === 1) return "Opening fan spread";
-    if (phase === 2) return "Alternating broadside sweep";
-    return "Final heavy barrage";
-  }
-  if (phase === 1) return "Main battery ranging";
-  if (phase === 2) return "Cross-broadside pressure";
-  return "Heavy salvo collapse";
-}
-
 function announceBossPhase(boss, phase = boss?.phase || 1) {
   if (!boss) return;
   state.phaseBannerTimer = 1.5;
@@ -762,8 +248,21 @@ function openUpgradeDraft() {
 }
 
 function applyRunUpgrade(choice) {
-  if (!choice?.apply) return;
-  choice.apply();
+  if (!choice) return;
+  const modifiers = choice.modifiers || {};
+  if (typeof modifiers.speedScale === "number") state.runBonuses.speedScale *= modifiers.speedScale;
+  if (typeof modifiers.fireRateScale === "number") state.runBonuses.fireRateScale *= modifiers.fireRateScale;
+  if (typeof modifiers.missileCooldownScale === "number") {
+    state.runBonuses.missileCooldownScale *= modifiers.missileCooldownScale;
+  }
+  if (typeof modifiers.shieldCapBonus === "number") state.runBonuses.shieldCapBonus += modifiers.shieldCapBonus;
+  if (typeof modifiers.armorCapBonus === "number") state.runBonuses.armorCapBonus += modifiers.armorCapBonus;
+  if (typeof modifiers.armorInvulnBonus === "number") {
+    state.runBonuses.armorInvulnBonus += modifiers.armorInvulnBonus;
+  }
+  if (typeof modifiers.spreadDurationBonus === "number") {
+    state.runBonuses.spreadDurationBonus += modifiers.spreadDurationBonus;
+  }
   state.runUpgradeHistory.push(choice.shortLabel || choice.label);
   applyCombatProfile();
   if (choice.id === "shield-relay") {
@@ -1077,8 +576,7 @@ function invalidateUiCaches() {
   lostOverlayCanvas = null;
   bgGlowCanvas = null;
   playerShadowCanvas = null;
-  eliteSpriteCanvas = enemyZeroSpriteCanvas;
-  eliteSpriteReady = enemyZeroSpriteReady;
+  assetStore.syncDerivedSprites();
   drawBossApproachBar._grad = null;
 }
 
@@ -1101,9 +599,9 @@ function buildBgGlowCanvas() {
 }
 
 function buildPlayerShadowCanvas() {
-  if (!playerSpriteReady || !playerSpriteCanvas) return;
+  if (!playerAssets.ready || !playerAssets.spriteCanvas) return;
   const drawHeight = SPRITE_SCALE.playerHeight;
-  const aspect = playerSpriteCanvas.width / playerSpriteCanvas.height;
+  const aspect = playerAssets.spriteCanvas.width / playerAssets.spriteCanvas.height;
   const drawWidth = drawHeight * aspect;
   const w = Math.ceil(drawWidth * 0.58 + 4);
   const h = 30;
@@ -1268,22 +766,7 @@ function returnToMenu() {
 }
 
 function allSpritesReady() {
-  return (
-    playerSpriteReady &&
-    enemyClaudeSpriteReady &&
-    enemyZeroSpriteReady &&
-    enemyA6M5SpriteReady &&
-    enemyN1K2SpriteReady &&
-    enemyA7M2SpriteReady &&
-    enemyJ2MSpriteReady &&
-    eliteSpriteReady &&
-    bossSpriteReady &&
-    bulletSpriteReady &&
-    missileSpriteReady &&
-    kongoSpriteReady &&
-    nagatoSpriteReady &&
-    yamatoSpriteReady
-  );
+  return assetStore.allSpritesReady();
 }
 
 if (document.fonts?.ready) {
@@ -1291,29 +774,6 @@ if (document.fonts?.ready) {
     invalidateUiCaches();
     render();
   });
-}
-
-function getTheatreIntelBrief() {
-  const inBossFight = !!(state.activeBoss && !state.activeBoss.dying);
-  if (state.stage >= 3) {
-    return {
-      act: "第三幕 · 决战海域",
-      air: "敌机：烈风 · 精锐：雷电",
-      bb: inBossFight ? "主力舰：大和级（交战）" : "主力舰目标：大和级",
-    };
-  }
-  if (state.stage >= 2) {
-    return {
-      act: "第二幕 · 深水拦截",
-      air: "敌机：零战五二型 · 精锐：紫电改",
-      bb: inBossFight ? "主力舰：长门级（交战）" : "主力舰目标：长门级",
-    };
-  }
-  return {
-    act: "第一幕 · 前沿接敌",
-    air: "敌机：九六舰战 / 零战二一 · 精锐：零战二一",
-    bb: inBossFight ? "主力舰：金刚级（交战）" : "主力舰目标：金刚级",
-  };
 }
 
 const uiSyncCache = {
@@ -1380,7 +840,7 @@ function syncTacticalIntelPanel(nowMs = performance.now(), force = false) {
       : Math.max(0, Math.min(1, stageProgress / bossBand));
     setWidthIfChanged(tacticalIntelMeterFillEl, `${ratio * 100}%`);
 
-    const brief = getTheatreIntelBrief();
+    const brief = getTheatreIntelBrief(state.stage, !!(state.activeBoss && !state.activeBoss.dying));
     setTextIfChanged(tacticalIntelLineActEl, brief.act);
 
     setSrcIfChanged(tacticalIntelAirThumbMainEl, loadout.airMainSrc);
@@ -1669,8 +1129,7 @@ function spawnEnemy(forceNormal = false) {
   const diffScore = stageDifficultyScore();
   const speed = 70 + Math.random() * 85 + Math.min(80, diffScore * 3);
   const elite = !forceNormal && diffScore >= 4 && Math.random() < Math.min(0.28, 0.08 + diffScore * 0.01);
-  const normalModel =
-    state.stage >= 3 ? "reppu" : state.stage >= 2 ? "a6m5" : Math.random() < 0.34 ? "claude" : "zero21";
+  const normalModel = pickNormalEnemyModel(state.stage, Math.random());
   const movementTypeRoll = Math.random();
   let movementType = "straight";
   if (movementTypeRoll > 0.72 && movementTypeRoll <= 0.9) movementType = "sway";
@@ -1687,7 +1146,7 @@ function spawnEnemy(forceNormal = false) {
     deathDuration: elite ? 0.56 : 0.45,
     hitFlash: 0,
     variant: Math.random() < 0.5 ? "red" : "amber",
-    aircraftModel: elite ? (state.stage >= 3 ? "raiden" : state.stage >= 2 ? "n1k2" : "zero21") : normalModel,
+    aircraftModel: elite ? getEliteEnemyModel(state.stage) : normalModel,
     elite,
     hp: elite ? 3 : 1,
     maxHp: elite ? 3 : 1,
@@ -1703,9 +1162,7 @@ function spawnEnemy(forceNormal = false) {
 
 function spawnBoss() {
   state.bossSpawned = true;
-  const tier = state.stage >= 3 ? 3 : state.stage >= 2 ? 2 : 1;
-  const hp = tier === 3 ? 74 : tier === 2 ? 58 : 52;
-  const volleyMul = tier === 3 ? 0.8 : tier === 2 ? 0.88 : 1;
+  const bossConfig = getBossConfig(state.stage);
   const bossObj = {
     id: state.nextEnemyId++,
     x: -262,
@@ -1717,16 +1174,16 @@ function spawnBoss() {
     deathTimer: 0,
     deathDuration: 1.1,
     hitFlash: 0,
-    variant: tier === 3 ? "yamato" : tier === 2 ? "nagato" : "kongo",
+    variant: bossConfig.variant,
     elite: false,
     boss: true,
     ship: true,
     entering: true,
-    hp,
-    maxHp: hp,
-    armorBulletScale: tier === 3 ? 0.76 : tier === 2 ? 0.82 : 0.88,
-    armorMissileScale: tier === 3 ? 0.62 : tier === 2 ? 0.68 : 0.74,
-    hitShieldWindow: tier === 3 ? 0.14 : tier === 2 ? 0.16 : 0.18,
+    hp: bossConfig.hp,
+    maxHp: bossConfig.hp,
+    armorBulletScale: bossConfig.armorBulletScale,
+    armorMissileScale: bossConfig.armorMissileScale,
+    hitShieldWindow: bossConfig.hitShieldWindow,
     hitShieldTimer: 0,
     phase: 1,
     broadsideSide: "left",
@@ -1736,7 +1193,7 @@ function spawnBoss() {
     swayAmount: 0,
     swaySpeed: 0,
     drift: 0,
-    shipVolleyScale: volleyMul,
+    shipVolleyScale: bossConfig.shipVolleyScale,
     anchorY: 82,
     anchorX: canvas.width / 2 - 119,
     patrolMinX: 150,
@@ -1799,14 +1256,14 @@ function getEnemyBulletPalette(kind) {
 
 function getEnemyBulletSprite(kind) {
   const resolved = kind === "boss" ? "boss" : kind === "elite" ? "elite" : "normal";
-  if (enemyBulletRenderSprites[resolved]) return enemyBulletRenderSprites[resolved];
+  if (weaponAssets.enemyBullets.renderSprites[resolved]) return weaponAssets.enemyBullets.renderSprites[resolved];
 
-  const base = enemyBulletSpriteCanvases[resolved] || enemyBulletSpriteCanvases.normal;
+  const base = weaponAssets.enemyBullets.spriteCanvases[resolved] || weaponAssets.enemyBullets.spriteCanvases.normal;
   if (!base) return null;
   const targetHeight = resolved === "boss" ? 30 : 25;
   const variant = getScaledSpriteVariant(base, targetHeight, 1);
   if (variant) {
-    enemyBulletRenderSprites[resolved] = variant;
+    weaponAssets.enemyBullets.renderSprites[resolved] = variant;
     return variant;
   }
   return { canvas: base, width: base.width, height: base.height };
@@ -2296,7 +1753,7 @@ function updateEnemies(dt) {
         const centerX = e.x + e.w / 2 - 3;
         const muzzleY = e.y + e.h - 4;
         const aim = (state.player.x - (e.x + e.w / 2)) * 0.18;
-        if (state.stage >= 3) {
+        if (getStageDefinition(state.stage).advancedAirPattern) {
           if (e.elite) {
             queueEnemyBullets(
               createEnemyBullet(centerX - 4, muzzleY, aim - 56, 224, 5, "elite"),
@@ -2837,13 +2294,13 @@ function drawPlayerFallback() {
 function drawPlayer() {
   if (state.mode === "menu") return;
   const p = state.player;
-  if (!playerSpriteReady || !playerSpriteCanvas) {
+  if (!playerAssets.ready || !playerAssets.spriteCanvas) {
     drawPlayerFallback();
     return;
   }
 
-  const useArmored = p.armor > 0 && playerArmoredSpriteReady && playerArmoredSpriteCanvas;
-  const sprite = useArmored ? playerArmoredSpriteCanvas : playerSpriteCanvas;
+  const useArmored = p.armor > 0 && playerAssets.armoredReady && playerAssets.armoredSpriteCanvas;
+  const sprite = useArmored ? playerAssets.armoredSpriteCanvas : playerAssets.spriteCanvas;
 
   const drawHeight = SPRITE_SCALE.playerHeight;
   const aspect = sprite.width / sprite.height;
@@ -3128,7 +2585,7 @@ function drawBossWarningOverlay() {
   const progress = 1 - state.bossWarningTimer / state.bossWarningDuration;
   const flicker = 0.56 + (Math.sin(state.elapsed * 24) + 1) * 0.24;
   const alpha = Math.min(1, 0.42 + flicker + progress * 0.16);
-  const isStage3 = state.stage >= 3;
+  const isStage3 = getStageBossVariant(state.stage) === "yamato";
 
   ctx.save();
   ctx.fillStyle = isStage3 ? `rgba(255, 74, 54, ${0.1 + alpha * 0.11})` : `rgba(255, 26, 26, ${0.07 + alpha * 0.075})`;
@@ -3308,12 +2765,12 @@ function drawStageClearNoticeOverlay() {
 }
 
 function drawBackground() {
-  ctx.fillStyle = state.stage >= 3 ? "#0b2437" : "#0d2f4d";
+  ctx.fillStyle = getStageBackgroundFill(state.stage);
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Draw runtime background image behind the star/glow field.
   // Small parallax (5-10px) to keep it alive without re-designing the asset.
-  if (runtimeBgDrawW > 0 && runtimeBgDrawH > 0) {
+  if (backgroundAssets.drawW > 0 && backgroundAssets.drawH > 0) {
     const maxParallaxX = 7; // keep within 5-10px
     const maxParallaxY = 1.8;
     const xOff = Math.sin(state.elapsed * 0.34) * maxParallaxX;
@@ -3324,12 +2781,20 @@ function drawBackground() {
     const centerY = canvas.height / 2 + yOff;
 
     // Prefer the blurred offscreen cover; fallback to the raw image if needed.
-    if (runtimeBgCoverReady && runtimeBgCoverCanvas) {
+    if (backgroundAssets.coverReady && backgroundAssets.coverCanvas) {
       ctx.globalAlpha = 0.28;
-      ctx.drawImage(runtimeBgCoverCanvas, centerX - runtimeBgDrawW / 2, centerY - runtimeBgDrawH / 2);
-    } else if (runtimeBgImageReady) {
+      ctx.drawImage(
+        backgroundAssets.coverCanvas,
+        centerX - backgroundAssets.drawW / 2,
+        centerY - backgroundAssets.drawH / 2
+      );
+    } else if (backgroundAssets.imageReady) {
       ctx.globalAlpha = 0.22;
-      ctx.drawImage(runtimeBgImage, centerX - runtimeBgDrawW / 2, centerY - runtimeBgDrawH / 2);
+      ctx.drawImage(
+        backgroundAssets.image,
+        centerX - backgroundAssets.drawW / 2,
+        centerY - backgroundAssets.drawH / 2
+      );
     }
     ctx.restore();
   }
@@ -3337,7 +2802,7 @@ function drawBackground() {
   // Center ellipse mask disabled by request.
 
   // Extra faint darkening in the top-left to reduce land-block contrast.
-  if (runtimeBgDrawW > 0 && runtimeBgDrawH > 0) {
+  if (backgroundAssets.drawW > 0 && backgroundAssets.drawH > 0) {
     ctx.save();
     const tlx = canvas.width * 0.18;
     const tly = canvas.height * 0.14;
@@ -3466,9 +2931,7 @@ function getResultStageLabel() {
     return state.stage >= STAGE_COUNT ? "Final Boss" : "Boss Wave";
   const stageProg = stageDifficultyScore();
   const bossBand = state.bossSpawnScoreDelta || state.bossSpawnScore;
-  if (stageProg >= bossBand * 0.66) return state.stage >= 3 ? "Final Corridor" : state.stage >= 2 ? "Deep Sweep" : "Late Sweep";
-  if (stageProg >= bossBand * 0.33) return state.stage >= 3 ? "Heavy Resistance" : state.stage >= 2 ? "Sustain Sweep" : "Mid Sweep";
-  return state.stage >= 3 ? "Approach Vector" : state.stage >= 2 ? "Second Line" : "Intercept Run";
+  return getStageResultBandLabel(state.stage, bossBand > 0 ? stageProg / bossBand : 0);
 }
 
 function fitText(textCtx, text, maxWidth) {
@@ -4207,11 +3670,14 @@ function drawMenuOverlay() {
 function render() {
   drawBackground();
 
-  if (bulletSpriteReady && bulletSpriteCanvas) {
-    const variant = bulletSpriteVariant || getScaledSpriteVariant(bulletSpriteCanvas, 22, 1);
-    const drawCanvas = variant?.canvas || bulletSpriteCanvas;
+  if (weaponAssets.bullet.ready && weaponAssets.bullet.spriteCanvas) {
+    const variant =
+      weaponAssets.bullet.spriteVariant || getScaledSpriteVariant(weaponAssets.bullet.spriteCanvas, 22, 1);
+    const drawCanvas = variant?.canvas || weaponAssets.bullet.spriteCanvas;
     const bDrawH = variant?.height || 22;
-    const bDrawW = variant?.width || Math.round((bulletSpriteCanvas.width / bulletSpriteCanvas.height) * bDrawH);
+    const bDrawW =
+      variant?.width ||
+      Math.round((weaponAssets.bullet.spriteCanvas.width / weaponAssets.bullet.spriteCanvas.height) * bDrawH);
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#ffe08e";
     for (const b of state.bullets) {
@@ -4233,7 +3699,7 @@ function render() {
       ctx.fillRect(b.x, b.y, b.w, b.h);
     }
   }
-  if (enemyBulletSpriteReady.normal) {
+  if (weaponAssets.enemyBullets.ready.normal) {
     for (const b of state.enemyBullets) {
       const palette = getEnemyBulletPalette(b.kind);
       const sprite = getEnemyBulletSprite(b.kind);
@@ -4283,16 +3749,16 @@ function render() {
       ctx.globalAlpha = 1;
     }
 
-    if (missileSpriteReady && missileSpriteCanvas) {
+    if (weaponAssets.missile.ready && weaponAssets.missile.spriteCanvas) {
       const drawHeight = m.h * 1.1;
-      const drawWidth = (missileSpriteCanvas.width / missileSpriteCanvas.height) * drawHeight;
+      const drawWidth = (weaponAssets.missile.spriteCanvas.width / weaponAssets.missile.spriteCanvas.height) * drawHeight;
       const angle = Math.atan2(m.dirY, m.dirX) + Math.PI / 2;
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(angle);
       ctx.globalAlpha = 0.85;
-      ctx.drawImage(missileSpriteCanvas, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      ctx.drawImage(weaponAssets.missile.spriteCanvas, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
       ctx.restore();
       ctx.globalAlpha = 1;
     } else {
@@ -4332,8 +3798,12 @@ function render() {
   for (const m of state.muzzleFlashes) {
     const t = Math.max(0, m.life / m.maxLife);
     ctx.globalAlpha = t;
-    if (muzzleFlashSpriteCanvas && muzzleFlashSpriteSize > 0) {
-      ctx.drawImage(muzzleFlashSpriteCanvas, m.x - muzzleFlashSpriteSize / 2, m.y - muzzleFlashSpriteSize / 2);
+    if (weaponAssets.muzzleFlash.spriteCanvas && weaponAssets.muzzleFlash.size > 0) {
+      ctx.drawImage(
+        weaponAssets.muzzleFlash.spriteCanvas,
+        m.x - weaponAssets.muzzleFlash.size / 2,
+        m.y - weaponAssets.muzzleFlash.size / 2
+      );
     } else {
       // Fallback: keep old behavior if sprite failed to build.
       const grad = ctx.createRadialGradient(m.x, m.y, 1, m.x, m.y, 12);
@@ -4451,14 +3921,11 @@ function render() {
     const ry = ey + dy + (e.h - rh) / 2;
     if (e.ship) {
       ctx.save();
+      const shipSpriteKey = getShipSpriteKey(e.variant);
       const shipSpriteCanvas =
-        e.variant === "yamato" && yamatoSpriteReady && yamatoSpriteCanvas
-          ? yamatoSpriteCanvas
-          : e.variant === "nagato" && nagatoSpriteReady && nagatoSpriteCanvas
-            ? nagatoSpriteCanvas
-            : kongoSpriteReady && kongoSpriteCanvas
-              ? kongoSpriteCanvas
-              : null;
+        shipAssets[shipSpriteKey]?.ready && shipAssets[shipSpriteKey]?.spriteCanvas
+          ? shipAssets[shipSpriteKey].spriteCanvas
+          : null;
 
       let shipDrawCanvas = null;
       let shipDrawW = rw;
@@ -4618,45 +4085,18 @@ function render() {
       ctx.globalCompositeOperation = "source-over";
       continue;
     }
-    const normalEnemySpriteCanvas =
-      e.aircraftModel === "claude"
-        ? enemyClaudeSpriteReady && enemyClaudeSpriteCanvas
-          ? enemyClaudeSpriteCanvas
-          : enemyZeroSpriteReady && enemyZeroSpriteCanvas
-            ? enemyZeroSpriteCanvas
-            : null
-        : e.aircraftModel === "a6m5"
-          ? enemyA6M5SpriteReady && enemyA6M5SpriteCanvas
-            ? enemyA6M5SpriteCanvas
-            : enemyZeroSpriteReady && enemyZeroSpriteCanvas
-              ? enemyZeroSpriteCanvas
-              : null
-          : e.aircraftModel === "reppu"
-            ? enemyA7M2SpriteReady && enemyA7M2SpriteCanvas
-              ? enemyA7M2SpriteCanvas
-              : enemyA6M5SpriteReady && enemyA6M5SpriteCanvas
-                ? enemyA6M5SpriteCanvas
-                : enemyZeroSpriteReady && enemyZeroSpriteCanvas
-                  ? enemyZeroSpriteCanvas
-                  : null
-            : enemyZeroSpriteReady && enemyZeroSpriteCanvas
-              ? enemyZeroSpriteCanvas
-              : enemyClaudeSpriteReady && enemyClaudeSpriteCanvas
-                ? enemyClaudeSpriteCanvas
-                : null;
-    const eliteEnemySpriteCanvas =
-      e.aircraftModel === "raiden" && enemyJ2MSpriteReady && enemyJ2MSpriteCanvas
-        ? enemyJ2MSpriteCanvas
-        : e.aircraftModel === "n1k2" && enemyN1K2SpriteReady && enemyN1K2SpriteCanvas
-          ? enemyN1K2SpriteCanvas
-          : state.stage >= 2 && enemyN1K2SpriteReady && enemyN1K2SpriteCanvas
-            ? enemyN1K2SpriteCanvas
-            : eliteSpriteReady && eliteSpriteCanvas
-              ? eliteSpriteCanvas
-              : null;
+    const resolveAircraftSpriteCanvas = (model) => {
+      const spriteKeys = getAircraftSpriteKeys(model);
+      for (const key of spriteKeys) {
+        if (enemyAssets[key]?.ready && enemyAssets[key]?.spriteCanvas) return enemyAssets[key].spriteCanvas;
+      }
+      return null;
+    };
+    const normalEnemySpriteCanvas = resolveAircraftSpriteCanvas(e.aircraftModel);
+    const eliteEnemySpriteCanvas = e.elite ? resolveAircraftSpriteCanvas(e.aircraftModel) || enemyAssets.elite.spriteCanvas : null;
     const spriteCanvas = e.boss
-      ? bossSpriteReady && bossSpriteCanvas
-        ? bossSpriteCanvas
+      ? enemyAssets.boss.ready && enemyAssets.boss.spriteCanvas
+        ? enemyAssets.boss.spriteCanvas
         : normalEnemySpriteCanvas
           ? normalEnemySpriteCanvas
           : null
