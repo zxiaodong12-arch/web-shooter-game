@@ -66,6 +66,52 @@ Open [http://127.0.0.1:8080/index.html](http://127.0.0.1:8080/index.html).
 
 ---
 
+## 画布分辨率与清晰度（DPR）
+
+- **逻辑坐标：** 游戏内碰撞、刷怪、HUD 绘制统一使用固定逻辑分辨率 **800×560**（`GAME_W` × `GAME_H`），与 CSS 显示尺寸无关。
+- **实际像素：** `canvas` 的 **backing store**（`canvas.width` / `canvas.height`）按 **CSS 显示尺寸 × `devicePixelRatio`** 计算，并 **将 DPR 上限封顶为 2**（`MAX_CANVAS_DPR`），减轻超高 DPR 设备的发热。
+- **绘制：** 每帧在 **逻辑坐标系**下绘制，再通过 `setTransform(renderScaleX, renderScaleY, …)` 映射到物理像素，因此在 **Retina / 高 DPR 屏**上主画布通常比「固定 800×560 再被 CSS 拉大」更锐利。
+- **布局：** `.stage-main` 使用 **`align-items: flex-start`**，避免与右侧战术栏同列时被 flex **纵向拉伸**，从而保持 **800:560** 显示比例与均匀缩放。
+
+---
+
+## Canvas resolution & sharpness (DPR)
+
+- **Logical space:** Simulation and drawing use a fixed **800×560** logical playfield (`GAME_W` × `GAME_H`), independent of CSS size.
+- **Backing store:** The bitmap size follows **CSS layout size × `devicePixelRatio`**, with **DPR capped at 2** (`MAX_CANVAS_DPR`).
+- **Rendering:** The code draws in **logical units**, then scales with **`setTransform(renderScaleX, renderScaleY, …)`**, so **high-DPI** displays typically look **sharper** than upscaling a single 800×560 buffer via CSS alone.
+- **Layout:** `.stage-main` uses **`align-items: flex-start`** so the canvas is not **stretched vertically** to match a taller aside column, preserving the **800:560** aspect and uniform scale.
+
+---
+
+## 冒烟测试（`npm run smoke`）
+
+仓库提供 **Playwright** 驱动的轻量回归脚本，无需手动起固定端口服务：
+
+```bash
+npm install
+npx playwright install chromium   # 首次或升级 Playwright 后如缺浏览器再执行
+npm run smoke
+```
+
+脚本会在本机 **随机端口** 启动临时静态服务，加载游戏后检查：无控制台错误、菜单 → 出击进入 `playing`、`render_game_to_text()` 中画布逻辑尺寸与 **均匀 `renderScale`** 等。实现见 **`scripts/smoke.cjs`**。
+
+---
+
+## Smoke test (`npm run smoke`)
+
+A **Playwright** smoke script lives in-repo (no fixed port):
+
+```bash
+npm install
+npx playwright install chromium   # if the browser bundle is missing
+npm run smoke
+```
+
+It serves the repo on a **random localhost port**, loads the game, and asserts basic health (no console errors, menu → sortie, consistent logical canvas + uniform scale in `render_game_to_text()`). See **`scripts/smoke.cjs`**.
+
+---
+
 ## 操作说明
 
 | 操作 | 按键 |
@@ -124,11 +170,14 @@ The footer **control strip** should mirror this; if it drifts, treat **`index.ht
 | --- | --- |
 | `index.html` | 页面壳层、画布、战术侧栏、机体档案 DOM、脚本/样式引用（含 `?v=` 缓存戳） |
 | `game.js` | 主循环、输入、物理与碰撞、敌我 AI、Boss、UI 同步、`renderGameToText`、调试入口 |
+| `js/game-content.js` | 关卡/敌人/Boss 等数据与文案（由 `window.GameContent` 注入） |
+| `js/game-assets.js` | 资源加载工厂（`GameAssetFactory`：机体、敌机、战舰、背景、武器贴图） |
 | `styles.css` | 排版、主题色、动效、响应式断点、暂停等状态下的壳层样式（如 `.game-paused`） |
 | `assets/` | 运行时资源：`aircraft/`、`naval/`、`weapons/`、`backgrounds/` 等 |
 | `output/` | 截图、Playwright 导出 JSON、本地验证产物（可按需 `.gitignore`） |
+| `scripts/smoke.cjs` | `npm run smoke`：内置静态服务 + Playwright 冒烟断言 |
 | `web_game_playwright_client.mjs` | Playwright 驱动：URL、动作 JSON、截图目录、迭代与间隔等 |
-| `scripts/` | 例如抠图/批处理等辅助脚本（非游戏运行时必需） |
+| `scripts/` | 其他辅助脚本（非游戏运行时必需） |
 | `VISUAL_SPEC.md` | 视觉与 UI 规格（英文要点 + 中文摘要） |
 | `progress.md` | 编年体式开发与验证记录 |
 
@@ -140,11 +189,14 @@ The footer **control strip** should mirror this; if it drifts, treat **`index.ht
 | --- | --- |
 | `index.html` | Shell, canvas, tactical rail, dossier DOM, script/style tags (cache-bust `?v=`) |
 | `game.js` | Loop, input, physics, AI, bosses, UI sync, `renderGameToText`, debug hooks |
+| `js/game-content.js` | Stage/enemy/boss data and copy (`window.GameContent`) |
+| `js/game-assets.js` | Asset loader factory (`GameAssetFactory`: airframes, enemies, ships, bg, weapons) |
 | `styles.css` | Layout, theme, motion, breakpoints, shell tweaks (e.g. `.game-paused`) |
 | `assets/` | Runtime art: `aircraft/`, `naval/`, `weapons/`, `backgrounds/`, etc. |
 | `output/` | Screenshots, Playwright JSON dumps (omit from git if desired) |
+| `scripts/smoke.cjs` | `npm run smoke`: static server + Playwright smoke assertions |
 | `web_game_playwright_client.mjs` | Playwright driver: URL, actions, screenshot dir, iterations |
-| `scripts/` | Aux tooling (e.g. cutouts) — not required at runtime |
+| `scripts/` | Other aux tooling — not required at runtime |
 | `VISUAL_SPEC.md` | Visual/UI spec (English + 中文) |
 | `progress.md` | Chronological dev + validation log |
 
@@ -155,7 +207,7 @@ The footer **control strip** should mirror this; if it drifts, treat **`index.ht
 游戏在 `window` 上挂载若干 **仅用于开发/自动化** 的接口（具体名称与参数以 `game.js` 底部为准）：
 
 - **`render_game_to_text()`（或别名 `render_game_to_text`）**  
-  返回 **一行 JSON 字符串**，描述当前可观测状态：`mode`、`paused`、玩家坐标与速度、子弹/敌弹/敌机采样、Boss 标记、计时器、分数与幕号等。用于截图对比、回归测试、录屏重放前后的差分。
+  返回 **一行 JSON 字符串**，描述当前可观测状态：`mode`、`paused`、玩家坐标与速度、子弹/敌弹/敌机采样、Boss 标记、计时器、分数与幕号等。`canvas` 字段同时包含 **逻辑尺寸**（`logicalWidth` / `logicalHeight`）与 **backing 像素**（`backingWidth` / `backingHeight`）及 **`renderScaleX` / `renderScaleY`**，便于核对 DPR 缩放。用于截图对比、回归测试、录屏重放前后的差分。
 
 - **`advanceTime(ms)`**  
   按 **固定 60Hz 步长** 推进内置时间；仅在 **`playing` 且未 `paused`** 时调用与主循环相同的 `updatePlaying` 逻辑，避免暂停时“偷跑”。每步后通常会触发绘制（以当前实现为准）。
@@ -171,7 +223,7 @@ The footer **control strip** should mirror this; if it drifts, treat **`index.ht
 
 The game attaches **dev/automation** helpers on `window` (exact names at the bottom of **`game.js`**):
 
-- **`render_game_to_text()`** — JSON string of canonical state: **`mode`**, **`paused`**, player pose/vel, bullet/enemy samples, boss flags, timers, score/stage, etc. Useful for screenshot diffs and regression checks.
+- **`render_game_to_text()`** — JSON string of canonical state: **`mode`**, **`paused`**, player pose/vel, bullet/enemy samples, boss flags, timers, score/stage, etc. The **`canvas`** object includes **logical** size (`logicalWidth` / `logicalHeight`), **backing** bitmap size (`backingWidth` / `backingHeight`), and **`renderScaleX` / `renderScaleY`** for DPR checks. Useful for screenshot diffs and regression checks.
 
 - **`advanceTime(ms)`** — Fixed **60 Hz** steps; calls the same **`updatePlaying`** path as the main loop **only when `playing && !paused`**, so pause does not “fast-forward” sim. Usually triggers a draw after stepping (per implementation).
 
@@ -243,7 +295,7 @@ If Chromium fails in a sandbox, retry from a full-permission terminal or adjust 
 
 ## 延伸阅读
 
-- **[VISUAL_SPEC.md](./VISUAL_SPEC.md)** — 视觉方向、光照与配色、HUD/暂停叠层规范、验收清单；**中英对照（中文摘要在各节内）**。
+- **[VISUAL_SPEC.md](./VISUAL_SPEC.md)** — 视觉方向、光照与配色、HUD/暂停叠层规范、**画布与 DPR**、验收清单；**中英对照（中文摘要在各节内）**。
 - **[progress.md](./progress.md)** — 从初版到多幕 Boss、性能优化、暂停与测试钩子等 **按时间线记录** 的变更与验证说明。
 - **[README.md](./README.md)** — 本文件：仓库入口说明（中英双语加长版）。
 
@@ -251,7 +303,7 @@ If Chromium fails in a sandbox, retry from a full-permission terminal or adjust 
 
 ## Further reading
 
-- **[VISUAL_SPEC.md](./VISUAL_SPEC.md)** — Art direction, HUD/pause overlay rules, acceptance notes (**bilingual sections**).
+- **[VISUAL_SPEC.md](./VISUAL_SPEC.md)** — Art direction, HUD/pause overlay rules, **canvas & DPR**, acceptance notes (**bilingual sections**).
 - **[progress.md](./progress.md)** — **Chronological** dev log (multi-stage bosses, perf passes, pause, hooks).
 - **[README.md](./README.md)** — This document: **entry-point** guide (Chinese-first, extended).
 

@@ -105,17 +105,28 @@
 
 **中文 · 镜头与构图：** 画布以 **中心战斗区** 为视觉重心；玩家 **基准线靠近画布下方约 1/4**。避免在 **分数/主要 HUD 读出区正后方** 叠高对比爆炸或闪光，防止读数困难。
 
-## 10. Technical Constraints
+## 10. Canvas & DPR (display scaling)
+
+- **Logical playfield:** Gameplay, collisions, and all canvas draw calls use a fixed **800×560** logical coordinate system (`GAME_W` × `GAME_H`). This is independent of CSS size.
+- **Backing store:** The bitmap (`canvas.width` / `canvas.height`) is sized from **CSS layout size × `devicePixelRatio`**, with **DPR capped at 2** to balance sharpness vs GPU fill cost.
+- **Transform:** Each frame applies **`setTransform(renderScaleX, renderScaleY, …)`** so logical units map to physical pixels; avoid relying on CSS alone to upscale a tiny internal buffer.
+- **Layout:** The canvas container (`.stage-main`) must **not** vertically stretch the canvas to match a taller column (e.g. tactical rail). Use flex **`align-items: flex-start`** (and center horizontally if needed) so the **displayed** canvas keeps the **800:560** aspect and **uniform** X/Y scale.
+- **Automation / QA:** `render_game_to_text()` includes **`canvas.logicalWidth` / `logicalHeight`**, **`backingWidth` / `backingHeight`**, and **`renderScaleX` / `renderScaleY`**. On a **2×** display, backing dimensions should roughly double vs CSS size; **`renderScaleX` and `renderScaleY` should match** (within floating-point tolerance) so the image is not anisotropically stretched.
+
+**中文 · 画布与 DPR：** **逻辑战场** 固定为 **800×560** 逻辑像素，与 CSS 缩放无关。**位图缓冲** 按 **布局尺寸 × 设备像素比** 分配，`devicePixelRatio` **封顶为 2**，在清晰度与填充率之间折中。每帧用 **`setTransform`** 把逻辑坐标映射到物理像素，**不要**只靠「内部小图 + CSS 放大」当最终清晰度方案。**布局上** 主画布所在 flex 容器 **不得** 为对齐侧栏而把画布 **纵向拉满**，须 **`align-items: flex-start`** 等，保证 **显示区域保持 800:560**，且 **X/Y 缩放一致**、不变形。验收与自动化可核对 **`render_game_to_text` 的 `canvas` 字段**：高分屏上 backing 约随 DPR 增大；**`renderScaleX` ≈ `renderScaleY`**，避免横向与纵向缩放不一致导致「画面被拉胖/压扁」。
+
+## 11. Technical Constraints
 
 - Keep single-canvas rendering.
+- Canvas backing store, logical resolution, and layout rules **must** follow **§10 Canvas & DPR** (no anisotropic stretch; DPR cap; flex alignment).
 - Preserve `window.render_game_to_text` and `window.advanceTime(ms)` compatibility.
 - `render_game_to_text` MUST expose a root-level boolean **`paused`** when validating pause UX and automation.
 - `advanceTime(ms)` MUST NOT advance `updatePlaying` while paused (same rule as the main RAF `tick`).
 - Maintain 60fps target on typical laptop browser.
 
-**中文 · 技术约束：** **主玩法仍用单画布** 渲染（DOM 侧栏为补充）。保留 **`window.render_game_to_text`** 与 **`window.advanceTime(ms)`** 供自动化与确定性测试。JSON **根级必须包含布尔字段 `paused`**，以便校验暂停状态。`advanceTime` 在暂停时 **不得调用** `updatePlaying`，与主循环 `requestAnimationFrame` **tick** 规则一致。目标在常见笔记本浏览器上 **维持约 60fps**。
+**中文 · 技术约束：** **主玩法仍用单画布** 渲染（DOM 侧栏为补充）。**位图、逻辑分辨率与布局** 须符合 **§10 画布与 DPR**（不变形拉伸、DPR 封顶、flex 对齐）。保留 **`window.render_game_to_text`** 与 **`window.advanceTime(ms)`** 供自动化与确定性测试。JSON **根级必须包含布尔字段 `paused`**，以便校验暂停状态。`advanceTime` 在暂停时 **不得调用** `updatePlaying`，与主循环 `requestAnimationFrame` **tick** 规则一致。目标在常见笔记本浏览器上 **维持约 60fps**。
 
-## 11. Implementation Roadmap
+## 12. Implementation Roadmap
 
 1. Phase A (done mostly): player semi-realistic silhouette + propeller blur.
 2. Phase B: enemy shading + hit flash + improved death readability.
@@ -126,7 +137,7 @@
 
 **中文 · 实施路线图：** **A** 玩家半写实剪影与螺旋桨模糊（基本完成）；**B** 敌人体积与命中闪、死亡可读性；**C** 拖尾与爆炸层次；**D** HUD 面板与图标化；**E** 可选整体轻雾/暗角；**F（已实现）** 战斗中暂停——画布压暗、**英文**主副文案（PAUSED / Press P or Esc…）、`body.game-paused`、页脚说明、逻辑冻结及 **`paused` / `advanceTime`** 测试约定。
 
-## 12. Acceptance Checklist
+## 13. Acceptance Checklist
 
 - [ ] Player shape is clearly Zero-inspired and readable at gameplay speed.
 - [ ] Movement banking feels natural and not distracting.
@@ -137,10 +148,13 @@
 - [ ] Pause: **P** and **Esc** both toggle; no stuck movement or auto-fire after resume from cleared key state.
 - [ ] No console errors in Playwright validation.
 - [ ] `render_game_to_text` matches visible gameplay state (including **`paused`** when applicable).
+- [ ] **Canvas / DPR:** On a standard wide layout, the **visible** game canvas keeps **~800:560** aspect (not vertically stretched by the flex column next to Tactical Intel).
+- [ ] **Canvas / DPR:** `render_game_to_text().canvas` shows **`logicalWidth` 800** and **`logicalHeight` 560**; **`renderScaleX` and `renderScaleY` are equal** (no anisotropic stretch). On **2×** displays, **`backingWidth` / `backingHeight`** should be roughly **2×** the CSS size (subject to integer rounding).
+- [ ] **Canvas / DPR:** Sprites and thin UI strokes on the playfield look **sharp on Retina / high-DPR** screens (no obvious “blown up 800×560 bitmap” softness when CSS width is ~800px).
 
-**中文 · 验收清单：** 玩家轮廓 **零战气质** 且高速下可辨；横滚 **自然不抢戏**；命中在 **余光** 内可见；敌机 **濒死/存活** 状态区分明确；**重特效时 HUD** 仍可读；**暂停** 时罩层与恢复说明 **一眼可读**、战场 **明显静止**；**P 与 Esc** 均可切换暂停，恢复后 **无黏键、无松手仍自动开火**；Playwright 无控制台报错；**`render_game_to_text` 与画面一致**（含 **`paused`**）。
+**中文 · 验收清单：** 玩家轮廓 **零战气质** 且高速下可辨；横滚 **自然不抢戏**；命中在 **余光** 内可见；敌机 **濒死/存活** 状态区分明确；**重特效时 HUD** 仍可读；**暂停** 时罩层与恢复说明 **一眼可读**、战场 **明显静止**；**P 与 Esc** 均可切换暂停，恢复后 **无黏键、无松手仍自动开火**；Playwright 无控制台报错；**`render_game_to_text` 与画面一致**（含 **`paused`**）。**画布与 DPR：** 宽屏下主画布 **不被侧栏撑变形**，显示比例约 **800:560**；JSON 中 **`logicalWidth`/`logicalHeight`** 为 800/560，**`renderScaleX`≈`renderScaleY`**；**2× 屏**上 backing 尺寸约 **2 倍 CSS 尺寸**（取整误差可接受）；**高分屏**上战场线条与精灵 **无明显「小图硬放大」糊边**。
 
-## 13. Next Build Tasks (Concrete)
+## 14. Next Build Tasks (Concrete)
 
 1. Add enemy highlight/shadow bands and hit flash.
 2. Add bullet glow trail.
@@ -151,7 +165,7 @@
 
 **中文 · 后续具体任务：** 敌人 **高光/暗边 + 命中闪**；子弹 **发光拖尾**；玩家受击 **短时染色叠层**；HUD **半透明衬底** 提对比；重跑 Playwright 与截图归档；可选 **暂停视觉微调**（罩色透明度、仅画布轻微模糊/暗角），但以 **§8 暂停条款** 为底线勿破坏可读性。
 
-## 14. Reference captures
+## 15. Reference captures
 
 - Pause full-page example: `output/pause-screen.png` (paused mid-sortie, tactical column visible).
 

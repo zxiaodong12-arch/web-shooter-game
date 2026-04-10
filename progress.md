@@ -402,3 +402,29 @@ TODO / suggestions for next agent:
   - Expanded the menu sortie briefing with three primer cards covering survival, missile timing, and upgrade decision-making.
   - Added a first-upgrade micro-tip so the first refit screen gives one sentence of guidance without turning into a tutorial wall.
   - Extended the boss phase banner with a threat hint line sourced from content config, so phase transitions now explain what changed in the attack pattern.
+- Canvas DPR + logical resolution pass (`game.js` / `styles.css` / `js/game-assets.js` / `index.html`):
+  - Introduced fixed logical playfield **`GAME_W` × `GAME_H` (800×560)**; simulation and drawing use this space while **`canvas.width` / `canvas.height`** follow **CSS size × `devicePixelRatio`** (DPR capped at **2** via `MAX_CANVAS_DPR`).
+  - Each frame **`syncCanvasBackingStore()`** updates the bitmap size and **`renderScaleX` / `renderScaleY`**; **`render()`** applies **`setTransform(renderScaleX, renderScaleY, …)`** so content maps to physical pixels without relying on CSS upscaling alone.
+  - **`snapRenderCoord`** now snaps using **actual render scale** (per-axis `"x"` / `"y"`) instead of raw `devicePixelRatio`.
+  - **`getCanvasPoint`** maps pointer position to **logical** coordinates via **`GAME_W` / `GAME_H`**.
+  - **`js/game-assets.js`** background cover sizing uses injected **`gameWidth` / `gameHeight`** instead of `canvas` bitmap dimensions.
+  - **`render_game_to_text()`** payload **`canvas`** now reports **`logicalWidth` / `logicalHeight`**, **`backingWidth` / `backingHeight`**, and **`renderScaleX` / `renderScaleY`**.
+  - **`.stage-main`** flex: added **`align-items: flex-start`** and **`justify-content: center`** so the canvas is not vertically stretched to match a taller tactical column (avoids non-uniform `renderScale` / distorted aspect).
+  - **`ResizeObserver`** + **`window.resize`** call **`syncCanvasBackingStore()`** and redraw when layout or DPR changes.
+  - Documentation updated in **`README.md`** (DPR section, project layout for `js/*`, smoke script); cache-bust query on **`styles.css`** as needed.
+- Smoke test script (`package.json` / `scripts/smoke.cjs`):
+  - Added **`npm run smoke`**: starts a **temporary static HTTP server** on a random port, runs **Playwright Chromium** against `index.html`, waits for assets, asserts menu → sortie, **`advanceTime`**, logical canvas bounds, uniform scale, and no console/page errors.
+  - First-time or post-upgrade Playwright installs: **`npx playwright install chromium`** if the browser bundle is missing.
+  - Validation: **`npm run smoke`** exits **0** locally after the above changes.
+- Aircraft & ship naming review (`js/game-content.js` / `index.html`):
+  - **Checked** against common historical / IJN naming: enemy types **A5M Claude**, **A6M2/A6M5 Zero**, **N1K2-J Shiden-kai**, **A7M2 Reppū**, **J2M Raiden**; boss warnings **金剛型／長門型／大和型戦艦 接近**; English **KONGO/NAGATO/YAMATO-CLASS BATTLESHIP** — all acceptable as implemented.
+  - **Fixed player airframe `meta`:** P-51D was labeled **USN** but the Mustang was operated primarily by **USAAF** → **`USAAF / Long-Range Strike`**. Spitfire was labeled **RN** (ambiguous with Royal Navy) → **`RAF / Agile Interceptor`**.
+  - **Fixed Japanese boss lines (`bossJa`):** tactical rail used **級** (e.g. 金剛**級**戦艦) while boss warnings already used **型**; standard Japanese naval class wording uses **型** → unified to **金剛型／長門型／大和型戦艦** to match **`warningText.ja`**.
+  - **`index.html`** dossier placeholder meta updated from **USN / Balanced Escort** to **`USAAF / Long-Range Strike`** for consistency when scripts have not yet hydrated the panel.
+  - **`index.html`** cache-bust bumped for **`game-content.js`** (`?v=20260412a`).
+- Professional terminology review (propulsion, naval, UI copy) (`js/game-content.js` / `index.html`):
+  - **Issue — propulsion:** Run upgrade **「Afterburner Trim」** was inaccurate for WWII **propeller** fighters (afterburners are **jet**). Renamed to **`Control Trim`** / short **`Trim`**, id **`control-trim`** (matches trim-tab / handling language).
+  - **Issue — gunnery:** **「main battery」** in **Gun Harmonization** description is **naval** usage (primary turrets on a ship). For a fighter, replaced with **`primary guns`**.
+  - **Reviewed OK / acceptable:** Boss phase lines **Main battery ranging**, **Cross-broadside pressure**, **broadside**, **salvo** — appropriate for **surface combatants**. **SURFACE CONTACT INBOUND**, **HEAVY SURFACE CONTACT** — standard radar/ASW style English. Canvas **COMBAT STATUS**, **BOSS TRIGGER**, **SECTOR CLEAR**, **SORTIE**, **MISSION COMPLETE**, **DEBRIEF** — common US/NATO-flavored game UI. **Pacific Theatre Intercept**, **Launch Sortie** — coherent. **GRID-04** — fictional grid ID, fine.
+  - **Reviewed OK / arcade:** **Shield Relay**, **Rapid Rack**, **Wide Salvo**, **Armor Belt** — game systems, not literal WWII avionics; **missile** as generic rocket OK for arcade.
+  - **`index.html`** **`game-content.js`** cache-bust **`?v=20260412b`**.
