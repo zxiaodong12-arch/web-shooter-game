@@ -1,5 +1,5 @@
 (() => {
-  function createGameAssetStore({ AIRFRAMES, canvas, buildSpriteCanvas, getScaledSpriteVariant, requestRender }) {
+  function createGameAssetStore({ AIRFRAMES, canvas, gameWidth, gameHeight, buildSpriteCanvas, getScaledSpriteVariant, requestRender }) {
     const store = {
       player: {
         image: new Image(),
@@ -153,8 +153,8 @@
     store.background.image.addEventListener("load", () => {
       store.background.imageReady = true;
       const padding = 22;
-      const targetW = canvas.width + padding * 2;
-      const targetH = canvas.height + padding * 2;
+      const targetW = gameWidth + padding * 2;
+      const targetH = gameHeight + padding * 2;
       const scale = Math.max(targetW / store.background.image.naturalWidth, targetH / store.background.image.naturalHeight);
       store.background.drawW = store.background.image.naturalWidth * scale;
       store.background.drawH = store.background.image.naturalHeight * scale;

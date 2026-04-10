@@ -41,6 +41,33 @@ const tacticalIntelLineBbEnEl = document.getElementById("tactical-intel-line-bb-
 const tacticalIntelAugmentsEl = document.getElementById("tactical-intel-augments");
 canvas.tabIndex = 0;
 
+/** Logical game resolution; simulation and all drawing commands use this coordinate space (CSS scales the element). */
+const GAME_W = 800;
+const GAME_H = 560;
+const MAX_CANVAS_DPR = 2;
+let renderScaleX = 1;
+let renderScaleY = 1;
+
+function syncCanvasBackingStore() {
+  const rect = canvas.getBoundingClientRect();
+  let cssW = rect.width || canvas.clientWidth;
+  let cssH = rect.height || canvas.clientHeight;
+  if (!cssW || !cssH) {
+    cssW = GAME_W;
+    cssH = GAME_H;
+  }
+  const dpr = Math.min(MAX_CANVAS_DPR, Math.max(1, window.devicePixelRatio || 1));
+  const nextW = Math.max(1, Math.floor(cssW * dpr));
+  const nextH = Math.max(1, Math.floor(cssH * dpr));
+  const el = canvas;
+  if (el.width !== nextW || el.height !== nextH) {
+    el.width = nextW;
+    el.height = nextH;
+  }
+  renderScaleX = el.width / GAME_W;
+  renderScaleY = el.height / GAME_H;
+}
+
 const debugFlags = new URLSearchParams(window.location.search);
 const {
   AIRFRAMES,
@@ -126,6 +153,8 @@ function getScaledSpriteVariant(baseCanvas, targetHeight, step = 4) {
 const assetStore = window.GameAssetFactory.createGameAssetStore({
   AIRFRAMES,
   canvas,
+  gameWidth: GAME_W,
+  gameHeight: GAME_H,
   buildSpriteCanvas,
   getScaledSpriteVariant,
   requestRender: () => {
@@ -376,8 +405,8 @@ const state = {
   phaseBannerSub: "",
   phaseBannerHint: "",
   player: {
-    x: canvas.width / 2,
-    y: canvas.height - 55,
+    x: GAME_W / 2,
+    y: GAME_H - 55,
     w: 46,
     h: 24,
     speed: BASE_PLAYER_STATS.speed,
@@ -419,8 +448,8 @@ applyStageProgress(state.stage);
 applyCombatProfile();
 
 const STARS = Array.from({ length: 70 }, (_, i) => ({
-  x: (i * 91) % canvas.width,
-  y: (i * 47) % canvas.height,
+  x: (i * 91) % GAME_W,
+  y: (i * 47) % GAME_H,
   r: 1 + ((i * 13) % 3),
 }));
 
@@ -439,10 +468,10 @@ const MISSILE_TRAIL_SEGMENTS = 6;
 /** Vertical limits for player center `y` (hitbox is centered on y). */
 const PLAYER_MOVE_MARGIN_TOP = 118;
 const PLAYER_MOVE_MARGIN_BOTTOM = 42;
-/** Snap render-only coordinates to device pixels for crisper sprites. */
-function snapRenderCoord(v) {
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  return Math.round(v * dpr) / dpr;
+/** Snap render-only coordinates to backing-store pixels (uses actual canvas scale, not raw DPR). */
+function snapRenderCoord(v, axis = "x") {
+  const s = axis === "y" ? renderScaleY : renderScaleX;
+  return Math.round(v * s) / s;
 }
 // Reused per-frame lookup to avoid O(N) enemy scans in missile steering.
 const enemyByIdMap = new Map();
@@ -454,8 +483,8 @@ const enemySpatialGrid = {
 };
 
 function rebuildEnemySpatialGrid() {
-  const cols = Math.ceil(canvas.width / ENEMY_GRID_CELL_SIZE);
-  const rows = Math.ceil(canvas.height / ENEMY_GRID_CELL_SIZE);
+  const cols = Math.ceil(GAME_W / ENEMY_GRID_CELL_SIZE);
+  const rows = Math.ceil(GAME_H / ENEMY_GRID_CELL_SIZE);
   if (enemySpatialGrid.cols !== cols || enemySpatialGrid.rows !== rows || enemySpatialGrid.buckets.length !== cols * rows) {
     enemySpatialGrid.cols = cols;
     enemySpatialGrid.rows = rows;
@@ -590,8 +619,8 @@ function invalidateUiCaches() {
 
 function buildBgGlowCanvas() {
   const c = document.createElement("canvas");
-  c.width = canvas.width;
-  c.height = canvas.height;
+  c.width = GAME_W;
+  c.height = GAME_H;
   const gctx = c.getContext("2d");
   if (!gctx) return;
   const glow = gctx.createRadialGradient(
@@ -667,8 +696,8 @@ function startStageCheckpoint(stageOverride = 1, { preserveRunBonuses = false } 
   state.nextEliteDropType = "spread";
   state.normalKillsSinceDrop = 0;
   applyCombatProfile();
-  state.player.x = canvas.width / 2;
-  state.player.y = canvas.height - 55;
+  state.player.x = GAME_W / 2;
+  state.player.y = GAME_H - 55;
   state.player.vx = 0;
   state.player.vy = 0;
   state.player.shield = preserveRunBonuses && state.playerMaxShield > BASE_PLAYER_STATS.maxShield ? 1 : 0;
@@ -749,8 +778,8 @@ function returnToMenu() {
   state.nextEliteDropType = "spread";
   state.normalKillsSinceDrop = 0;
   applyCombatProfile();
-  state.player.x = canvas.width / 2;
-  state.player.y = canvas.height - 55;
+  state.player.x = GAME_W / 2;
+  state.player.y = GAME_H - 55;
   state.player.vx = 0;
   state.player.vy = 0;
   state.player.shield = 0;
@@ -1129,7 +1158,7 @@ function spawnEnemy(forceNormal = false) {
   const w = 34;
   const h = 24;
   const minX = 20;
-  const maxX = canvas.width - 40 - w;
+  const maxX = GAME_W - 40 - w;
   let x = minX + Math.random() * (maxX - minX);
   if (Math.random() < 0.68) {
     const nearPlayer = state.player.x - w / 2 + (Math.random() - 0.5) * 220;
@@ -1205,9 +1234,9 @@ function spawnBoss() {
     drift: 0,
     shipVolleyScale: bossConfig.shipVolleyScale,
     anchorY: 82,
-    anchorX: canvas.width / 2 - 119,
+    anchorX: GAME_W / 2 - 119,
     patrolMinX: 150,
-    patrolMaxX: canvas.width - 150 - 238,
+    patrolMaxX: GAME_W - 150 - 238,
     patrolDir: 1,
     patrolSpeed: tier === 3 ? 24 : tier === 2 ? 21 : 18,
     specialVolleyToggle: false,
@@ -1504,7 +1533,7 @@ function updateMissiles(dt) {
     if (m.trailCount < MISSILE_TRAIL_POINTS) m.trailCount++;
 
     // Cull offscreen.
-    if (m.y < -60 || m.y > canvas.height + 60 || m.x < -60 || m.x > canvas.width + 60) {
+    if (m.y < -60 || m.y > GAME_H + 60 || m.x < -60 || m.x > GAME_W + 60) {
       state.missiles.splice(i, 1);
       continue;
     }
@@ -1656,9 +1685,9 @@ function clampPlayer() {
   const half = state.player.w / 2;
   const halfH = state.player.h / 2;
   if (state.player.x < half) state.player.x = half;
-  if (state.player.x > canvas.width - half) state.player.x = canvas.width - half;
+  if (state.player.x > GAME_W - half) state.player.x = GAME_W - half;
   const minY = halfH + PLAYER_MOVE_MARGIN_TOP;
-  const maxY = canvas.height - halfH - PLAYER_MOVE_MARGIN_BOTTOM;
+  const maxY = GAME_H - halfH - PLAYER_MOVE_MARGIN_BOTTOM;
   if (state.player.y < minY) state.player.y = minY;
   if (state.player.y > maxY) state.player.y = maxY;
 }
@@ -1788,7 +1817,7 @@ function updateEnemies(dt) {
           e.y = Math.min(e.anchorY, e.y + e.speed * dt);
           if (e.y >= e.anchorY) e.entering = false;
         }
-        e.x = canvas.width / 2 - e.w / 2 + Math.sin(state.elapsed * e.swaySpeed) * e.swayAmount;
+        e.x = GAME_W / 2 - e.w / 2 + Math.sin(state.elapsed * e.swaySpeed) * e.swayAmount;
       } else {
         e.y += e.speed * dt;
       }
@@ -1800,7 +1829,7 @@ function updateEnemies(dt) {
       } else {
         e.x += e.drift * 0.28 * dt;
       }
-      e.x = Math.max(8, Math.min(canvas.width - e.w - 8, e.x));
+      e.x = Math.max(8, Math.min(GAME_W - e.w - 8, e.x));
       e.shootCooldown -= dt;
       if (e.shootCooldown <= 0 && !e.boss) {
         const originMap = {
@@ -1882,7 +1911,7 @@ function updateEffectsAndCleanup(dt) {
   }
   for (let i = state.powerups.length - 1; i >= 0; i--) {
     const p = state.powerups[i];
-    if (p.life <= 0 || p.y >= canvas.height + 30) state.powerups.splice(i, 1);
+    if (p.life <= 0 || p.y >= GAME_H + 30) state.powerups.splice(i, 1);
   }
   for (let i = state.muzzleFlashes.length - 1; i >= 0; i--) {
     if (state.muzzleFlashes[i].life > 0) continue;
@@ -1893,7 +1922,7 @@ function updateEffectsAndCleanup(dt) {
   }
   for (let i = state.enemyBullets.length - 1; i >= 0; i--) {
     const b = state.enemyBullets[i];
-    if (b.y >= canvas.height + 24 || b.x <= -24 || b.x >= canvas.width + 24) state.enemyBullets.splice(i, 1);
+    if (b.y >= GAME_H + 24 || b.x <= -24 || b.x >= GAME_W + 24) state.enemyBullets.splice(i, 1);
   }
   for (let i = state.enemies.length - 1; i >= 0; i--) {
     const e = state.enemies[i];
@@ -1906,7 +1935,7 @@ function resolveBulletEnemyCollisions() {
 
   outer: for (let i = state.bullets.length - 1; i >= 0; i--) {
     const b = state.bullets[i];
-    if (b.y + b.h < 0 || b.x + b.w < 0 || b.x > canvas.width) {
+    if (b.y + b.h < 0 || b.x + b.w < 0 || b.x > GAME_W) {
       state.bullets.splice(i, 1);
       continue;
     }
@@ -2027,7 +2056,7 @@ function resolveEnemiesPlayerCollisions() {
     const e = state.enemies[i];
     if (e.dying) continue;
     if (e.ship && e.boss) continue;
-    const reachedBottom = e.y > canvas.height + 8;
+    const reachedBottom = e.y > GAME_H + 8;
     const hitPlayer =
       e.x < state.player.x + state.player.w / 2 && e.x + e.w > state.player.x - state.player.w / 2 && e.y + e.h > state.player.y - state.player.h / 2;
     if (reachedBottom) {
@@ -2238,8 +2267,8 @@ function drawPlayer() {
   const drawWidth = drawHeight * aspect;
 
   ctx.save();
-  const drawCx = snapRenderCoord(p.x);
-  const drawCy = snapRenderCoord(p.y - 1);
+  const drawCx = snapRenderCoord(p.x, "x");
+  const drawCy = snapRenderCoord(p.y - 1, "y");
   ctx.translate(drawCx, drawCy);
 
   if (useArmored) {
@@ -2284,7 +2313,7 @@ function drawBossApproachBar() {
   if (!boss || boss.dying) return;
 
   const barW = 290;
-  const barX = (canvas.width - barW) / 2;
+  const barX = (GAME_W - barW) / 2;
   const barY = 12;
   const trackH = 12;
   const ratioBoss = boss.maxHp ? Math.max(0, Math.min(1, boss.hp / boss.maxHp)) : 0;
@@ -2360,7 +2389,7 @@ function drawBossPhaseBanner() {
   const alpha = Math.min(1, 0.2 + t * 0.7);
   const panelW = 430;
   const panelH = 64;
-  const x = (canvas.width - panelW) / 2;
+  const x = (GAME_W - panelW) / 2;
   const y = 48;
 
   ctx.save();
@@ -2376,14 +2405,14 @@ function drawBossPhaseBanner() {
   ctx.textAlign = "center";
   ctx.fillStyle = "rgba(255, 234, 196, 0.96)";
   ctx.font = "800 14px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText(state.phaseBannerText, canvas.width / 2, y + 18);
+  ctx.fillText(state.phaseBannerText, GAME_W / 2, y + 18);
   ctx.fillStyle = "rgba(145, 229, 255, 0.84)";
   ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText(state.phaseBannerSub, canvas.width / 2, y + 33);
+  ctx.fillText(state.phaseBannerSub, GAME_W / 2, y + 33);
   if (state.phaseBannerHint) {
     ctx.fillStyle = "rgba(255, 241, 208, 0.9)";
     ctx.font = "600 10px 'IBM Plex Sans', 'Segoe UI', sans-serif";
-    ctx.fillText(state.phaseBannerHint, canvas.width / 2, y + 49);
+    ctx.fillText(state.phaseBannerHint, GAME_W / 2, y + 49);
   }
   ctx.restore();
 }
@@ -2443,35 +2472,35 @@ function drawStageAtmosphereOverlay() {
   const alphaBoost = bossWarningActive ? 0.12 : yamatoEntering ? 0.09 : 0.05;
 
   ctx.save();
-  const stormGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  const stormGrad = ctx.createLinearGradient(0, 0, 0, GAME_H);
   stormGrad.addColorStop(0, `rgba(6, 18, 30, ${0.22 + alphaBoost})`);
   stormGrad.addColorStop(0.55, `rgba(14, 34, 54, ${0.12 + alphaBoost * 0.45})`);
   stormGrad.addColorStop(1, `rgba(18, 44, 70, ${0.08 + alphaBoost * 0.25})`);
   ctx.fillStyle = stormGrad;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
 
-  const horizonY = canvas.height * 0.32;
-  const seaGlow = ctx.createLinearGradient(0, horizonY, 0, canvas.height);
+  const horizonY = GAME_H * 0.32;
+  const seaGlow = ctx.createLinearGradient(0, horizonY, 0, GAME_H);
   seaGlow.addColorStop(0, `rgba(103, 166, 198, ${0.02 + alphaBoost * 0.12})`);
   seaGlow.addColorStop(0.45, `rgba(46, 102, 138, ${0.08 + alphaBoost * 0.18})`);
   seaGlow.addColorStop(1, `rgba(14, 42, 70, ${0.14 + alphaBoost * 0.28})`);
   ctx.fillStyle = seaGlow;
-  ctx.fillRect(0, horizonY, canvas.width, canvas.height - horizonY);
+  ctx.fillRect(0, horizonY, GAME_W, GAME_H - horizonY);
 
   ctx.strokeStyle = `rgba(168, 214, 240, ${0.08 + alphaBoost * 0.18})`;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, horizonY + 8);
-  ctx.lineTo(canvas.width, horizonY + 8);
+  ctx.lineTo(GAME_W, horizonY + 8);
   ctx.stroke();
 
   if (bossWarningActive || yamatoEntering) {
-    const vignette = ctx.createRadialGradient(canvas.width / 2, canvas.height * 0.28, 10, canvas.width / 2, canvas.height * 0.3, canvas.width * 0.72);
+    const vignette = ctx.createRadialGradient(GAME_W / 2, GAME_H * 0.28, 10, GAME_W / 2, GAME_H * 0.3, GAME_W * 0.72);
     vignette.addColorStop(0, `rgba(255, 120, 74, ${0.025 + alphaBoost * 0.12})`);
     vignette.addColorStop(0.46, `rgba(255, 86, 60, ${0.018 + alphaBoost * 0.08})`);
     vignette.addColorStop(1, "rgba(4, 8, 14, 0)");
     ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, GAME_W, GAME_H);
   }
 
   ctx.restore();
@@ -2525,11 +2554,11 @@ function drawBossWarningOverlay() {
 
   ctx.save();
   ctx.fillStyle = isStage3 ? `rgba(255, 74, 54, ${0.1 + alpha * 0.11})` : `rgba(255, 26, 26, ${0.07 + alpha * 0.075})`;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
 
   const panelW = 360;
   const panelH = 92;
-  const panelX = (canvas.width - panelW) / 2;
+  const panelX = (GAME_W - panelW) / 2;
   const panelY = 126;
   const alertPulse = 0.62 + (Math.sin(state.elapsed * 20) + 1) * 0.34;
 
@@ -2540,7 +2569,7 @@ function drawBossWarningOverlay() {
     for (let i = 0; i < 3; i++) {
       const ry = panelY + panelH / 2 + i * 6;
       ctx.beginPath();
-      ctx.ellipse(canvas.width / 2, ry, 228 + i * 34, 62 + i * 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(GAME_W / 2, ry, 228 + i * 34, 62 + i * 10, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
@@ -2582,15 +2611,15 @@ function drawBossWarningOverlay() {
   ctx.fillStyle = `rgba(255, ${214 + Math.round(alertPulse * 22)}, ${204 + Math.round(alertPulse * 12)}, 0.98)`;
   ctx.font = "700 24px 'Zen Old Mincho', 'Hiragino Mincho ProN', serif";
   ctx.textAlign = "center";
-  ctx.fillText(warnJa, canvas.width / 2, panelY + 43);
+  ctx.fillText(warnJa, GAME_W / 2, panelY + 43);
 
   ctx.fillStyle = `rgba(145, 229, 255, ${0.86})`;
   ctx.font = "700 11px 'Orbitron', 'Barlow Condensed', sans-serif";
-  ctx.fillText(warnEn, canvas.width / 2, panelY + 63);
+  ctx.fillText(warnEn, GAME_W / 2, panelY + 63);
 
   ctx.fillStyle = `rgba(255, 162, 150, ${0.7 + alpha * 0.16})`;
   ctx.font = "700 9px 'Orbitron', 'Barlow Condensed', sans-serif";
-  ctx.fillText("WARNING // HEAVY SURFACE CONTACT // PRESS ENTER TO SKIP", canvas.width / 2, panelY + 79);
+  ctx.fillText("WARNING // HEAVY SURFACE CONTACT // PRESS ENTER TO SKIP", GAME_W / 2, panelY + 79);
 
   ctx.restore();
 }
@@ -2616,11 +2645,11 @@ function drawStageClearNoticeOverlay() {
 
   ctx.save();
   ctx.fillStyle = `rgba(123, 196, 255, ${0.025 + alpha * 0.05})`;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
 
   const panelW = 458;
   const panelH = 106;
-  const panelX = (canvas.width - panelW) / 2;
+  const panelX = (GAME_W - panelW) / 2;
   const panelY = 132;
   const outerInset = 10;
 
@@ -2681,28 +2710,28 @@ function drawStageClearNoticeOverlay() {
   ctx.textAlign = "center";
   ctx.fillStyle = `rgba(255, 244, 225, ${0.54 + easedVisibility * 0.42})`;
   ctx.font = "700 22px 'Zen Old Mincho', 'Hiragino Mincho ProN', serif";
-  drawTrackedText(ctx, titleJa, canvas.width / 2, panelY + 40, 1.4);
+  drawTrackedText(ctx, titleJa, GAME_W / 2, panelY + 40, 1.4);
 
   ctx.fillStyle = `rgba(156, 234, 255, ${0.56 + easedVisibility * 0.34})`;
   ctx.font = "700 11px 'Orbitron', 'Barlow Condensed', sans-serif";
-  ctx.fillText(titleEn, canvas.width / 2, panelY + 60);
+  ctx.fillText(titleEn, GAME_W / 2, panelY + 60);
 
   ctx.fillStyle = `rgba(239, 246, 251, ${0.56 + easedVisibility * 0.26})`;
   ctx.font = "600 10px 'IBM Plex Sans', 'Trebuchet MS', sans-serif";
   const subtitleLines = wrapTextLines(ctx, subtitle, panelW - 82, 2);
   for (let i = 0; i < subtitleLines.length; i++) {
-    ctx.fillText(subtitleLines[i], canvas.width / 2, panelY + 74 + i * 11);
+    ctx.fillText(subtitleLines[i], GAME_W / 2, panelY + 74 + i * 11);
   }
 
   ctx.fillStyle = `rgba(255, 220, 152, ${0.42 + easedVisibility * 0.4})`;
   ctx.font = "700 9px 'Orbitron', 'Barlow Condensed', sans-serif";
-  ctx.fillText(footer, canvas.width / 2, panelY + 94);
+  ctx.fillText(footer, GAME_W / 2, panelY + 94);
   ctx.restore();
 }
 
 function drawBackground() {
   ctx.fillStyle = getStageBackgroundFill(state.stage);
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
 
   // Draw runtime background image behind the star/glow field.
   // Small parallax (5-10px) to keep it alive without re-designing the asset.
@@ -2713,8 +2742,8 @@ function drawBackground() {
     const yOff = Math.cos(state.elapsed * 0.22) * maxParallaxY;
 
     ctx.save();
-    const centerX = canvas.width / 2 + xOff;
-    const centerY = canvas.height / 2 + yOff;
+    const centerX = GAME_W / 2 + xOff;
+    const centerY = GAME_H / 2 + yOff;
 
     // Prefer the blurred offscreen cover; fallback to the raw image if needed.
     if (backgroundAssets.coverReady && backgroundAssets.coverCanvas) {
@@ -2740,15 +2769,15 @@ function drawBackground() {
   // Extra faint darkening in the top-left to reduce land-block contrast.
   if (backgroundAssets.drawW > 0 && backgroundAssets.drawH > 0) {
     ctx.save();
-    const tlx = canvas.width * 0.18;
-    const tly = canvas.height * 0.14;
-    const tr = Math.min(canvas.width, canvas.height) * 0.55;
+    const tlx = GAME_W * 0.18;
+    const tly = GAME_H * 0.14;
+    const tr = Math.min(GAME_W, GAME_H) * 0.55;
     const tlGrad = ctx.createRadialGradient(tlx, tly, 0, tlx, tly, tr);
     tlGrad.addColorStop(0, "rgba(2, 10, 22, 0.22)");
     tlGrad.addColorStop(0.6, "rgba(2, 10, 22, 0.08)");
     tlGrad.addColorStop(1, "rgba(2, 10, 22, 0)");
     ctx.fillStyle = tlGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, GAME_W, GAME_H);
     ctx.restore();
   }
 
@@ -2780,12 +2809,12 @@ function drawBackground() {
 function drawCenterText(title, subtitle) {
   ctx.save();
   ctx.fillStyle = "rgba(4, 14, 24, 0.52)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
 
   const cardW = 388;
   const cardH = 192;
-  const cardX = canvas.width / 2 - cardW / 2;
-  const cardY = canvas.height / 2 - cardH / 2 + 10;
+  const cardX = GAME_W / 2 - cardW / 2;
+  const cardY = GAME_H / 2 - cardH / 2 + 10;
   const cardGrad = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
   cardGrad.addColorStop(0, "rgba(8, 28, 46, 0.97)");
   cardGrad.addColorStop(1, "rgba(7, 20, 34, 0.95)");
@@ -2823,15 +2852,15 @@ function drawCenterText(title, subtitle) {
   ctx.fillStyle = "#f2f8ff";
   ctx.font = "700 46px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(title, canvas.width / 2, cardY + 90);
+  ctx.fillText(title, GAME_W / 2, cardY + 90);
   ctx.font = "600 20px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
   ctx.fillStyle = "#d9eaf8";
-  ctx.fillText(subtitle, canvas.width / 2, cardY + 124);
+  ctx.fillText(subtitle, GAME_W / 2, cardY + 124);
 
   const scoreBoxW = 150;
   const scoreBoxH = 44;
   const scoreBoxY = cardY + 136;
-  const scoreBoxX = canvas.width / 2 - scoreBoxW / 2;
+  const scoreBoxX = GAME_W / 2 - scoreBoxW / 2;
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.beginPath();
   ctx.roundRect(scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH, 999);
@@ -2841,10 +2870,10 @@ function drawCenterText(title, subtitle) {
   ctx.stroke();
   ctx.fillStyle = "#81ddff";
   ctx.font = "700 11px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText("FINAL SCORE", canvas.width / 2, scoreBoxY + 14);
+  ctx.fillText("FINAL SCORE", GAME_W / 2, scoreBoxY + 14);
   ctx.fillStyle = "#ffffff";
   ctx.font = "700 18px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText(`${state.score}/${state.targetScore}`, canvas.width / 2, scoreBoxY + 32);
+  ctx.fillText(`${state.score}/${state.targetScore}`, GAME_W / 2, scoreBoxY + 32);
   ctx.textAlign = "left";
   ctx.fillStyle = "rgba(124, 180, 214, 0.8)";
   ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
@@ -2881,15 +2910,15 @@ function fitText(textCtx, text, maxWidth) {
 function buildResultOverlayCache(config) {
   resultButtonHitboxes.length = 0;
   const c = document.createElement("canvas");
-  c.width = canvas.width;
-  c.height = canvas.height;
+  c.width = GAME_W;
+  c.height = GAME_H;
   const mctx = c.getContext("2d");
   if (!mctx) return null;
 
   const cardW = 408;
   const cardH = 364;
-  const cardX = canvas.width / 2 - cardW / 2;
-  const cardY = canvas.height / 2 - cardH / 2 + 6;
+  const cardX = GAME_W / 2 - cardW / 2;
+  const cardY = GAME_H / 2 - cardH / 2 + 6;
   const accent = config.accent;
   const accentSoft = config.accentSoft;
   const stats = [
@@ -2901,12 +2930,12 @@ function buildResultOverlayCache(config) {
 
   mctx.save();
   mctx.fillStyle = "rgba(7, 16, 28, 0.38)";
-  mctx.fillRect(0, 0, canvas.width, canvas.height);
-  const haze = mctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 24, canvas.width / 2, canvas.height / 2, 320);
+  mctx.fillRect(0, 0, GAME_W, GAME_H);
+  const haze = mctx.createRadialGradient(GAME_W / 2, GAME_H / 2, 24, GAME_W / 2, GAME_H / 2, 320);
   haze.addColorStop(0, "rgba(173, 214, 245, 0.08)");
   haze.addColorStop(1, "rgba(7, 16, 28, 0)");
   mctx.fillStyle = haze;
-  mctx.fillRect(0, 0, canvas.width, canvas.height);
+  mctx.fillRect(0, 0, GAME_W, GAME_H);
 
   const cardGrad = mctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
   cardGrad.addColorStop(0, "rgba(239, 247, 252, 0.92)");
@@ -2935,11 +2964,11 @@ function buildResultOverlayCache(config) {
 
   mctx.fillStyle = "#193349";
   mctx.font = "800 34px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  mctx.fillText(config.title, canvas.width / 2, cardY + 78);
+  mctx.fillText(config.title, GAME_W / 2, cardY + 78);
 
   mctx.fillStyle = "rgba(25, 51, 73, 0.7)";
   mctx.font = "600 14px 'IBM Plex Sans', 'Segoe UI', sans-serif";
-  mctx.fillText(config.subtitle, canvas.width / 2, cardY + 104);
+  mctx.fillText(config.subtitle, GAME_W / 2, cardY + 104);
 
   mctx.strokeStyle = "rgba(92, 135, 166, 0.18)";
   mctx.beginPath();
@@ -3057,7 +3086,7 @@ function buildResultOverlayCache(config) {
     mctx.textAlign = "center";
     mctx.fillStyle = "rgba(70, 103, 129, 0.84)";
     mctx.font = "700 10px 'IBM Plex Sans', 'Segoe UI', sans-serif";
-    mctx.fillText(config.footerHint, canvas.width / 2, cardY + cardH - 14);
+    mctx.fillText(config.footerHint, GAME_W / 2, cardY + cardH - 14);
   }
 
   mctx.restore();
@@ -3217,13 +3246,13 @@ function drawMenuAirframeIndexCard(targetCtx, airframe, x, y, w, h, selected, ho
 function buildMenuOverlayCache() {
   const panelW = 430;
   const panelH = 200;
-  const panelX = canvas.width / 2 - panelW / 2;
-  const panelY = canvas.height / 2 - panelH / 2 + 24;
+  const panelX = GAME_W / 2 - panelW / 2;
+  const panelY = GAME_H / 2 - panelH / 2 + 24;
   const subtitleText = "Check controls, confirm target count, then push straight into the intercept.";
 
   const c = document.createElement("canvas");
-  c.width = canvas.width;
-  c.height = canvas.height;
+  c.width = GAME_W;
+  c.height = GAME_H;
   const mctx = c.getContext("2d");
   if (!mctx) return;
 
@@ -3286,19 +3315,19 @@ function buildMenuOverlayCache() {
 
 function buildCenterOverlayCache(topLabel, title, subtitle) {
   const c = document.createElement("canvas");
-  c.width = canvas.width;
-  c.height = canvas.height;
+  c.width = GAME_W;
+  c.height = GAME_H;
   const mctx = c.getContext("2d");
   if (!mctx) return null;
 
   mctx.save();
   mctx.fillStyle = "rgba(4, 14, 24, 0.52)";
-  mctx.fillRect(0, 0, canvas.width, canvas.height);
+  mctx.fillRect(0, 0, GAME_W, GAME_H);
 
   const cardW = 388;
   const cardH = 192;
-  const cardX = canvas.width / 2 - cardW / 2;
-  const cardY = canvas.height / 2 - cardH / 2 + 10;
+  const cardX = GAME_W / 2 - cardW / 2;
+  const cardY = GAME_H / 2 - cardH / 2 + 10;
   const cardGrad = mctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
   cardGrad.addColorStop(0, "rgba(8, 28, 46, 0.97)");
   cardGrad.addColorStop(1, "rgba(7, 20, 34, 0.95)");
@@ -3354,15 +3383,15 @@ function buildCenterOverlayCache(topLabel, title, subtitle) {
   mctx.fillStyle = "#f2f8ff";
   mctx.font = "700 46px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
   mctx.textAlign = "center";
-  mctx.fillText(title, canvas.width / 2, cardY + 90);
+  mctx.fillText(title, GAME_W / 2, cardY + 90);
   mctx.font = "600 20px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
   mctx.fillStyle = "#d9eaf8";
-  mctx.fillText(subtitle, canvas.width / 2, cardY + 124);
+  mctx.fillText(subtitle, GAME_W / 2, cardY + 124);
 
   const scoreBoxW = 150;
   const scoreBoxH = 44;
   const scoreBoxY = cardY + 136;
-  const scoreBoxX = canvas.width / 2 - scoreBoxW / 2;
+  const scoreBoxX = GAME_W / 2 - scoreBoxW / 2;
   mctx.fillStyle = "rgba(255,255,255,0.08)";
   mctx.beginPath();
   mctx.roundRect(scoreBoxX, scoreBoxY, scoreBoxW, scoreBoxH, 999);
@@ -3372,10 +3401,10 @@ function buildCenterOverlayCache(topLabel, title, subtitle) {
   mctx.stroke();
   mctx.fillStyle = "#81ddff";
   mctx.font = "700 11px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  mctx.fillText("FINAL SCORE", canvas.width / 2, scoreBoxY + 14);
+  mctx.fillText("FINAL SCORE", GAME_W / 2, scoreBoxY + 14);
   mctx.fillStyle = "#ffffff";
   mctx.font = "700 18px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  mctx.fillText(`${state.score}/${state.targetScore}`, canvas.width / 2, scoreBoxY + 32);
+  mctx.fillText(`${state.score}/${state.targetScore}`, GAME_W / 2, scoreBoxY + 32);
   mctx.textAlign = "left";
   mctx.fillStyle = "rgba(124, 180, 214, 0.8)";
   mctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
@@ -3390,14 +3419,14 @@ function drawPauseOverlay() {
   if (state.mode !== "playing" || !state.paused) return;
   ctx.save();
   ctx.fillStyle = "rgba(4, 14, 24, 0.38)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
   ctx.fillStyle = "rgba(243, 248, 255, 0.96)";
   ctx.textAlign = "center";
   ctx.font = "700 26px 'Orbitron', 'Barlow Condensed', sans-serif";
-  ctx.fillText("PAUSED", canvas.width / 2, canvas.height / 2 - 6);
+  ctx.fillText("PAUSED", GAME_W / 2, GAME_H / 2 - 6);
   ctx.fillStyle = "rgba(126, 220, 255, 0.88)";
   ctx.font = "600 12px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText("Press P or Esc to resume", canvas.width / 2, canvas.height / 2 + 20);
+  ctx.fillText("Press P or Esc to resume", GAME_W / 2, GAME_H / 2 + 20);
   ctx.restore();
 }
 
@@ -3407,11 +3436,11 @@ function drawUpgradeOverlay() {
   upgradeCardHitboxes.length = 0;
   ctx.save();
   ctx.fillStyle = "rgba(4, 14, 24, 0.54)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
 
   const panelW = 664;
   const panelH = 272;
-  const panelX = (canvas.width - panelW) / 2;
+  const panelX = (GAME_W - panelW) / 2;
   const panelY = 118;
   ctx.fillStyle = "rgba(8, 28, 46, 0.96)";
   ctx.beginPath();
@@ -3522,8 +3551,8 @@ function drawMenuOverlay() {
   ctx.save();
   const panelW = 652;
   const panelH = 408;
-  const panelX = canvas.width / 2 - panelW / 2;
-  const panelY = canvas.height / 2 - panelH / 2 + 14;
+  const panelX = GAME_W / 2 - panelW / 2;
+  const panelY = GAME_H / 2 - panelH / 2 + 14;
   const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
   panelGrad.addColorStop(0, "rgba(10, 35, 56, 0.92)");
   panelGrad.addColorStop(1, "rgba(7, 23, 38, 0.94)");
@@ -3657,6 +3686,9 @@ function drawMenuOverlay() {
 }
 
 function render() {
+  syncCanvasBackingStore();
+  ctx.save();
+  ctx.setTransform(renderScaleX, 0, 0, renderScaleY, 0, 0);
   drawBackground();
 
   if (weaponAssets.bullet.ready && weaponAssets.bullet.spriteCanvas) {
@@ -3926,11 +3958,11 @@ function render() {
         shipDrawCanvas = shipVariant?.canvas || shipSpriteCanvas;
         shipDrawW = shipVariant?.width || rw;
         shipDrawH = shipVariant?.height || rh;
-        shipDrawX = snapRenderCoord(rx + (rw - shipDrawW) / 2);
-        shipDrawY = snapRenderCoord(ry + rh - shipDrawH);
+        shipDrawX = snapRenderCoord(rx + (rw - shipDrawW) / 2, "x");
+        shipDrawY = snapRenderCoord(ry + rh - shipDrawH, "y");
       }
 
-      const seaLineY = snapRenderCoord(shipDrawCanvas ? shipDrawY + shipDrawH * 0.875 : ry + rh * 0.82);
+      const seaLineY = snapRenderCoord(shipDrawCanvas ? shipDrawY + shipDrawH * 0.875 : ry + rh * 0.82, "y");
       const foamH = 20;
       const seaGrad = ctx.createLinearGradient(rx, seaLineY, rx, seaLineY + foamH);
       seaGrad.addColorStop(0, "rgba(204, 229, 242, 0.26)");
@@ -3939,8 +3971,8 @@ function render() {
       ctx.fillStyle = seaGrad;
       const foamX0Raw = shipDrawCanvas ? shipDrawX - rw * 0.02 : rx - rw * 0.04;
       const foamWRaw = shipDrawCanvas ? shipDrawW + rw * 0.04 : rw * 1.08;
-      const foamX0 = snapRenderCoord(foamX0Raw);
-      const foamX1 = snapRenderCoord(foamX0Raw + foamWRaw);
+      const foamX0 = snapRenderCoord(foamX0Raw, "x");
+      const foamX1 = snapRenderCoord(foamX0Raw + foamWRaw, "x");
       const foamW = Math.max(1, foamX1 - foamX0);
       ctx.fillRect(foamX0, seaLineY, foamW, foamH);
 
@@ -4039,7 +4071,7 @@ function render() {
         }
 
         const tRipple = state.elapsed;
-        const rBase = snapRenderCoord(seaLineY + 1);
+        const rBase = snapRenderCoord(seaLineY + 1, "y");
         ctx.globalCompositeOperation = "screen";
         ctx.lineWidth = 1.15;
         ctx.strokeStyle = `rgba(214, 240, 252, ${0.14 + Math.sin(tRipple * 5.2) * 0.05})`;
@@ -4055,7 +4087,7 @@ function render() {
         ctx.stroke();
         ctx.strokeStyle = `rgba(188, 228, 246, ${0.09 + Math.sin(tRipple * 3.8) * 0.035})`;
         ctx.beginPath();
-        const rBase2 = snapRenderCoord(seaLineY + 4);
+        const rBase2 = snapRenderCoord(seaLineY + 4, "y");
         for (let i = 0; i <= ripSegs; i++) {
           const t = i / ripSegs;
           const x = foamX0 + t * foamW;
@@ -4185,6 +4217,7 @@ function render() {
   drawStageClearNoticeOverlay();
   drawPauseOverlay();
   drawModeOverlay();
+  ctx.restore();
 }
 
 let rafId = 0;
@@ -4214,8 +4247,8 @@ function buttonToKey(key, down) {
 function getCanvasPoint(event) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-    y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    x: ((event.clientX - rect.left) / rect.width) * GAME_W,
+    y: ((event.clientY - rect.top) / rect.height) * GAME_H,
   };
 }
 
@@ -4399,8 +4432,16 @@ function renderGameToText() {
     paused: !!state.paused,
     selectedAirframe: selectedAirframeId,
     airframeTrait: getSelectedAirframe().statSummary,
-    coordinateSystem: "origin at top-left; x rightward; y downward; units are canvas pixels",
-    canvas: { width: canvas.width, height: canvas.height },
+    coordinateSystem:
+      "origin at top-left; x rightward; y downward; units are logical game pixels (fixed playfield size)",
+    canvas: {
+      logicalWidth: GAME_W,
+      logicalHeight: GAME_H,
+      backingWidth: canvas.width,
+      backingHeight: canvas.height,
+      renderScaleX,
+      renderScaleY,
+    },
     player: {
       x: Number(state.player.x.toFixed(2)),
       y: Number(state.player.y.toFixed(2)),
@@ -4569,6 +4610,18 @@ window.debugTriggerBossWarning = (stageOverride = Number(debugFlags.get("debug_s
   clearTransientEffects();
   render();
 };
+
+syncCanvasBackingStore();
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(() => {
+    syncCanvasBackingStore();
+    if (canRender) render();
+  }).observe(canvas);
+}
+window.addEventListener("resize", () => {
+  syncCanvasBackingStore();
+  if (canRender) render();
+});
 
 syncChrome();
 render();

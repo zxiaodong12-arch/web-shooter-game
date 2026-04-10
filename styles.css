@@ -324,6 +324,7 @@ canvas {
   position: relative;
   width: min(96vw, 800px);
   height: auto;
+  aspect-ratio: 800 / 560;
   border: 1px solid rgba(110, 182, 237, 0.42);
   border-radius: 14px;
   background:
@@ -366,6 +367,8 @@ canvas:hover {
 .stage-main {
   min-width: 0;
   display: flex;
+  align-items: flex-start;
+  justify-content: center;
   min-height: 560px;
 }
 
