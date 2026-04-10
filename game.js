@@ -57,6 +57,7 @@ const {
   getStageLoadout,
   getStageStartScore,
   getBossPhaseDescriptor,
+  getBossPhaseThreatHint,
   getStageDefinition,
   getTheatreIntelBrief,
   pickNormalEnemyModel,
@@ -66,6 +67,9 @@ const {
   getStageBackgroundFill,
   getAircraftSpriteKeys,
   getShipSpriteKey,
+  getAirFirePlan,
+  getShipBossFirePlan,
+  getAirBossFirePlan,
 } = window.GameContent;
 const AIRFRAME_ORDER = Object.keys(AIRFRAMES);
 let selectedAirframeId = "p51d";
@@ -219,9 +223,10 @@ function applyCombatProfile() {
 
 function announceBossPhase(boss, phase = boss?.phase || 1) {
   if (!boss) return;
-  state.phaseBannerTimer = 1.5;
+  state.phaseBannerTimer = 2.2;
   state.phaseBannerText = `${getBossDisplayName(boss.variant)} // PHASE ${phase}`;
   state.phaseBannerSub = getBossPhaseDescriptor(boss, phase);
+  state.phaseBannerHint = getBossPhaseThreatHint(boss, phase);
 }
 
 function pickUpgradeChoices() {
@@ -239,6 +244,7 @@ function openUpgradeDraft() {
   state.paused = false;
   state.upgradeChoices = pickUpgradeChoices();
   state.upgradeSelection = 0;
+  if (!state.hasSeenUpgradeHelp) state.hasSeenUpgradeHelp = true;
   upgradeCardHitboxes.length = 0;
   hoveredUpgradeIndex = -1;
   canvas.style.cursor = "";
@@ -368,6 +374,7 @@ const state = {
   phaseBannerTimer: 0,
   phaseBannerText: "",
   phaseBannerSub: "",
+  phaseBannerHint: "",
   player: {
     x: canvas.width / 2,
     y: canvas.height - 55,
@@ -404,6 +411,7 @@ const state = {
   runUpgradeHistory: [],
   upgradeChoices: [],
   upgradeSelection: 0,
+  hasSeenUpgradeHelp: false,
 };
 canRender = true;
 
@@ -647,6 +655,7 @@ function startStageCheckpoint(stageOverride = 1, { preserveRunBonuses = false } 
   state.phaseBannerTimer = 0;
   state.phaseBannerText = "";
   state.phaseBannerSub = "";
+  state.phaseBannerHint = "";
   state.missileCooldown = 0;
   state.paused = false;
   state.upgradeChoices = [];
@@ -731,6 +740,7 @@ function returnToMenu() {
   state.phaseBannerTimer = 0;
   state.phaseBannerText = "";
   state.phaseBannerSub = "";
+  state.phaseBannerHint = "";
   state.missileCooldown = 0;
   state.runBonuses = createDefaultRunBonuses();
   state.runUpgradeHistory = [];
@@ -1269,6 +1279,49 @@ function getEnemyBulletSprite(kind) {
   return { canvas: base, width: base.width, height: base.height };
 }
 
+function rollPlanValue(value) {
+  if (Array.isArray(value)) {
+    const [min, max] = value;
+    return min + Math.random() * (max - min);
+  }
+  return value;
+}
+
+function executeFirePlan(plan, originMap, aim = 0) {
+  if (!plan?.salvos?.length) return;
+  for (const salvo of plan.salvos) {
+    const source = originMap[salvo.sourceKey] || originMap.center;
+    if (!source) continue;
+    if (salvo.mode === "fan") {
+      queueEnemyBullets(
+        ...createFanBullets(
+          source.x + (salvo.offsetX || 0),
+          source.y + (salvo.offsetY || 0),
+          salvo.patterns,
+          salvo.kind || "boss"
+        )
+      );
+      continue;
+    }
+    if (salvo.mode !== "direct" || !salvo.shots?.length) continue;
+    queueEnemyBullets(
+      ...salvo.shots.map((shot) => {
+        const shotSource = originMap[shot.sourceKey] || source;
+        const vx = typeof shot.aimOffset === "number" ? aim + shot.aimOffset : shot.vx || 0;
+        const vy = rollPlanValue(shot.vyRange ?? shot.vy ?? 0);
+        return createEnemyBullet(
+          shotSource.x + (shot.offsetX || 0),
+          shotSource.y + (shot.offsetY || 0),
+          vx,
+          vy,
+          shot.size || 5,
+          shot.kind || "enemy"
+        );
+      })
+    );
+  }
+}
+
 function shoot() {
   const bw = 5;
   const bh = 14;
@@ -1750,163 +1803,41 @@ function updateEnemies(dt) {
       e.x = Math.max(8, Math.min(canvas.width - e.w - 8, e.x));
       e.shootCooldown -= dt;
       if (e.shootCooldown <= 0 && !e.boss) {
-        const centerX = e.x + e.w / 2 - 3;
-        const muzzleY = e.y + e.h - 4;
+        const originMap = {
+          center: { x: e.x + e.w / 2 - 3, y: e.y + e.h - 4 },
+        };
         const aim = (state.player.x - (e.x + e.w / 2)) * 0.18;
-        if (getStageDefinition(state.stage).advancedAirPattern) {
-          if (e.elite) {
-            queueEnemyBullets(
-              createEnemyBullet(centerX - 4, muzzleY, aim - 56, 224, 5, "elite"),
-              createEnemyBullet(centerX, muzzleY - 1, aim, 240, 6, "elite"),
-              createEnemyBullet(centerX + 4, muzzleY, aim + 56, 224, 5, "elite")
-            );
-            e.shootCooldown = 0.16 + Math.random() * 0.08;
-          } else if (e.volleyToggle) {
-            queueEnemyBullets(
-              createEnemyBullet(centerX - 5, muzzleY, aim - 18, 228, 5, "enemy"),
-              createEnemyBullet(centerX + 5, muzzleY, aim + 18, 228, 5, "enemy")
-            );
-            e.shootCooldown = 0.24 + Math.random() * 0.08;
-          } else {
-            queueEnemyBullets(
-              createEnemyBullet(centerX, muzzleY, aim, 236 + Math.random() * 12, 5, e.elite ? "elite" : "enemy")
-            );
-            e.shootCooldown = 0.2 + Math.random() * 0.07;
-          }
-          e.volleyToggle = !e.volleyToggle;
-        } else {
-          queueEnemyBullets(
-            createEnemyBullet(centerX, muzzleY, aim, 215 + Math.random() * 28, 5, e.elite ? "elite" : "enemy")
-          );
-          e.shootCooldown = e.elite ? 0.2 + Math.random() * 0.14 : 0.31 + Math.random() * 0.19;
-        }
+        const firePlan = getAirFirePlan(state.stage, { elite: e.elite, volleyToggle: !!e.volleyToggle });
+        executeFirePlan(firePlan, originMap, aim);
+        e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.3);
+        if (firePlan.nextState) Object.assign(e, firePlan.nextState);
       }
       if (e.ship && e.shootCooldown <= 0 && !e.entering) {
         const turretY = e.y + e.h - 6;
-        const leftX = e.x + e.w * 0.22;
-        const midX = e.x + e.w * 0.5;
-        const rightX = e.x + e.w * 0.78;
+        const originMap = {
+          left: { x: e.x + e.w * 0.22, y: turretY },
+          mid: { x: e.x + e.w * 0.5, y: turretY },
+          right: { x: e.x + e.w * 0.78, y: turretY },
+        };
         const shipPhase = e.phase || getShipBossPhase(e);
-        const vs = e.shipVolleyScale ?? 1;
-        const isYamato = e.variant === "yamato";
-        if (isYamato) {
-          if (shipPhase === 1) {
-            queueEnemyBullets(
-              ...createFanBullets(midX - 3, turretY, [
-                { vx: -132, vy: 214, size: 5 },
-                { vx: -74, vy: 228, size: 6 },
-                { vx: 0, vy: 248, size: 8 },
-                { vx: 74, vy: 228, size: 6 },
-                { vx: 132, vy: 214, size: 5 },
-              ], "boss")
-            );
-            e.shootCooldown = 0.52 * vs;
-          } else if (shipPhase === 2) {
-            const firingLeft = e.broadsideSide !== "right";
-            const spreadDir = firingLeft ? -1 : 1;
-            const broadsideX = firingLeft ? leftX : rightX;
-            queueEnemyBullets(
-              ...createFanBullets(broadsideX - 3, turretY, [
-                { vx: 18 * spreadDir, vy: 232, size: 5 },
-                { vx: 54 * spreadDir, vy: 244, size: 6 },
-                { vx: 92 * spreadDir, vy: 254, size: 6 },
-                { vx: 136 * spreadDir, vy: 264, size: 7 },
-              ], "boss"),
-              ...createFanBullets(midX - 3, turretY - 2, [
-                { vx: -40 * spreadDir, vy: 248, size: 6 },
-                { vx: 0, vy: 274, size: 7 },
-                { vx: 40 * spreadDir, vy: 248, size: 6 },
-              ], "boss")
-            );
-            e.broadsideSide = firingLeft ? "right" : "left";
-            e.shootCooldown = 0.46 * vs;
-          } else {
-            if (e.specialVolleyToggle) {
-              queueEnemyBullets(
-                ...createFanBullets(midX - 3, turretY - 3, [
-                  { vx: -168, vy: 214, size: 5 },
-                  { vx: -120, vy: 228, size: 5 },
-                  { vx: -72, vy: 244, size: 6 },
-                  { vx: -24, vy: 264, size: 7 },
-                  { vx: 24, vy: 264, size: 7 },
-                  { vx: 72, vy: 244, size: 6 },
-                  { vx: 120, vy: 228, size: 5 },
-                  { vx: 168, vy: 214, size: 5 },
-                ], "boss")
-              );
-              e.shootCooldown = 0.44 * vs;
-            } else {
-              queueEnemyBullets(
-                ...createFanBullets(leftX - 3, turretY, [
-                  { vx: -152, vy: 232, size: 5 },
-                  { vx: -98, vy: 246, size: 6 },
-                  { vx: -44, vy: 260, size: 6 },
-                ], "boss"),
-                ...createFanBullets(midX - 3, turretY - 4, [
-                  { vx: 0, vy: 316, size: 10 },
-                  { vx: -36, vy: 282, size: 7 },
-                  { vx: 36, vy: 282, size: 7 },
-                ], "boss"),
-                ...createFanBullets(rightX - 3, turretY, [
-                  { vx: 44, vy: 260, size: 6 },
-                  { vx: 98, vy: 246, size: 6 },
-                  { vx: 152, vy: 232, size: 5 },
-                ], "boss")
-              );
-              e.shootCooldown = 0.48 * vs;
-            }
-            e.specialVolleyToggle = !e.specialVolleyToggle;
-          }
-        } else if (shipPhase === 1) {
-          queueEnemyBullets(
-            createEnemyBullet(leftX - 3, turretY, -58, 228, 6, "boss"),
-            createEnemyBullet(midX - 3, turretY, 0, 244, 7, "boss"),
-            createEnemyBullet(rightX - 3, turretY, 58, 228, 6, "boss")
-          );
-          e.shootCooldown = 0.72 * vs;
-        } else if (shipPhase === 2) {
-          const firingLeft = e.broadsideSide !== "right";
-          const broadsideX = firingLeft ? leftX : rightX;
-          const spreadDir = firingLeft ? -1 : 1;
-          queueEnemyBullets(
-            createEnemyBullet(broadsideX - 3, turretY, 20 * spreadDir, 236, 6, "boss"),
-            createEnemyBullet(broadsideX - 3, turretY, 62 * spreadDir, 248, 7, "boss"),
-            createEnemyBullet(broadsideX - 3, turretY, 108 * spreadDir, 258, 7, "boss"),
-            createEnemyBullet(midX - 3, turretY, 26 * spreadDir, 242, 6, "boss")
-          );
-          e.broadsideSide = firingLeft ? "right" : "left";
-          e.shootCooldown = 0.6 * vs;
-        } else {
-          if (e.heavyVolleyToggle) {
-            queueEnemyBullets(
-              createEnemyBullet(midX - 4, turretY - 2, 0, 300, 10, "boss"),
-              createEnemyBullet(leftX - 3, turretY, -58, 248, 6, "boss"),
-              createEnemyBullet(rightX - 3, turretY, 58, 248, 6, "boss")
-            );
-            e.shootCooldown = 0.5 * vs;
-          } else {
-            queueEnemyBullets(
-              createEnemyBullet(leftX - 3, turretY, -126, 238, 6, "boss"),
-              createEnemyBullet(leftX - 3, turretY, -72, 250, 6, "boss"),
-              createEnemyBullet(midX - 3, turretY, -28, 266, 7, "boss"),
-              createEnemyBullet(midX - 3, turretY, 28, 266, 7, "boss"),
-              createEnemyBullet(rightX - 3, turretY, 72, 250, 6, "boss"),
-              createEnemyBullet(rightX - 3, turretY, 126, 238, 6, "boss")
-            );
-            e.shootCooldown = 0.56 * vs;
-          }
-          e.heavyVolleyToggle = !e.heavyVolleyToggle;
-        }
+        const firePlan = getShipBossFirePlan(e.variant, {
+          phase: shipPhase,
+          broadsideSide: e.broadsideSide,
+          specialVolleyToggle: !!e.specialVolleyToggle,
+          heavyVolleyToggle: !!e.heavyVolleyToggle,
+        });
+        executeFirePlan(firePlan, originMap, 0);
+        e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.6);
+        if (firePlan.nextState) Object.assign(e, firePlan.nextState);
       }
       if (e.boss && !e.ship && e.shootCooldown <= 0) {
-        const centerX = e.x + e.w / 2;
-        const muzzleY = e.y + e.h - 8;
-        queueEnemyBullets(
-          createEnemyBullet(centerX - 3, muzzleY, -90, 245, 7, "boss"),
-          createEnemyBullet(centerX - 3, muzzleY, 0, 260, 7, "boss"),
-          createEnemyBullet(centerX - 3, muzzleY, 90, 245, 7, "boss")
+        const firePlan = getAirBossFirePlan();
+        executeFirePlan(
+          firePlan,
+          { center: { x: e.x + e.w / 2, y: e.y + e.h - 8 } },
+          0
         );
-        e.shootCooldown = 0.68;
+        e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.68);
       }
     } else {
       e.deathTimer -= dt;
@@ -2425,12 +2356,12 @@ function drawBossApproachBar() {
 
 function drawBossPhaseBanner() {
   if (state.mode !== "playing" || state.phaseBannerTimer <= 0 || !state.phaseBannerText) return;
-  const t = Math.min(1, state.phaseBannerTimer / 1.5);
+  const t = Math.min(1, state.phaseBannerTimer / 2.2);
   const alpha = Math.min(1, 0.2 + t * 0.7);
-  const panelW = 320;
-  const panelH = 46;
+  const panelW = 430;
+  const panelH = 64;
   const x = (canvas.width - panelW) / 2;
-  const y = 54;
+  const y = 48;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -2449,6 +2380,11 @@ function drawBossPhaseBanner() {
   ctx.fillStyle = "rgba(145, 229, 255, 0.84)";
   ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
   ctx.fillText(state.phaseBannerSub, canvas.width / 2, y + 33);
+  if (state.phaseBannerHint) {
+    ctx.fillStyle = "rgba(255, 241, 208, 0.9)";
+    ctx.font = "600 10px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+    ctx.fillText(state.phaseBannerHint, canvas.width / 2, y + 49);
+  }
   ctx.restore();
 }
 
@@ -3495,8 +3431,13 @@ function drawUpgradeOverlay() {
   ctx.fillStyle = "#d9eaf8";
   ctx.font = "600 13px 'IBM Plex Sans', 'Segoe UI', sans-serif";
   ctx.fillText("Left / right to cycle. Enter or click to lock one refit before re-engaging.", panelX + 24, panelY + 90);
+  if (state.hasSeenUpgradeHelp && !state.runUpgradeHistory.length) {
+    ctx.fillStyle = "rgba(255, 224, 168, 0.92)";
+    ctx.font = "700 11px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+    ctx.fillText("Tip: choose the card that solves your next problem, not the flashiest stat.", panelX + 24, panelY + 106);
+  }
 
-  const cardY = panelY + 114;
+  const cardY = panelY + 126;
   const cardW = 196;
   const cardH = 118;
   const gap = 14;
@@ -3580,9 +3521,9 @@ function drawModeOverlay() {
 function drawMenuOverlay() {
   ctx.save();
   const panelW = 652;
-  const panelH = 322;
+  const panelH = 408;
   const panelX = canvas.width / 2 - panelW / 2;
-  const panelY = canvas.height / 2 - panelH / 2 + 26;
+  const panelY = canvas.height / 2 - panelH / 2 + 14;
   const panelGrad = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelH);
   panelGrad.addColorStop(0, "rgba(10, 35, 56, 0.92)");
   panelGrad.addColorStop(1, "rgba(7, 23, 38, 0.94)");
@@ -3612,12 +3553,60 @@ function drawMenuOverlay() {
   const lines = wrapTextLines(ctx, subtitleText, maxWidth, maxLines);
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], panelX + 24, subtitleY + i * lineHeight);
 
+  const tipsTop = panelY + 120;
   ctx.fillStyle = "rgba(126, 220, 255, 0.88)";
   ctx.font = "700 11px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
-  ctx.fillText("AIRFRAME SELECTION", panelX + 24, panelY + 132);
+  ctx.fillText("FIRST SORTIE FOCUS", panelX + 24, tipsTop);
+  const primerCards = [
+    {
+      label: "SURVIVE FIRST",
+      title: "Armor buys one mistake",
+      body: "Do not chase every kill. Keep a lane open and use armor as a buffer, not a plan.",
+    },
+    {
+      label: "MISSILE WINDOWS",
+      title: "Use M on dense targets",
+      body: "Missiles are best when a wave stacks up or a heavier contact holds the center line.",
+    },
+    {
+      label: "UPGRADE RULE",
+      title: "Pick your next answer",
+      body: "Take shield if you're leaking lives, faster guns for air pressure, missiles for bigger targets.",
+    },
+  ];
+  const primerY = tipsTop + 10;
+  const primerW = 192;
+  const primerH = 76;
+  const primerGap = 14;
+  primerCards.forEach((card, index) => {
+    const x = panelX + 24 + index * (primerW + primerGap);
+    ctx.fillStyle = "rgba(7, 21, 34, 0.54)";
+    ctx.beginPath();
+    ctx.roundRect(x, primerY, primerW, primerH, 16);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(126, 220, 255, 0.12)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255, 218, 138, 0.92)";
+    ctx.font = "700 10px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+    ctx.fillText(card.label, x + 14, primerY + 16);
+    ctx.fillStyle = "#f2f8ff";
+    ctx.font = "700 16px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+    ctx.fillText(card.title, x + 14, primerY + 35);
+    ctx.fillStyle = "rgba(214, 231, 244, 0.88)";
+    ctx.font = "600 10px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+    const primerLines = wrapTextLines(ctx, card.body, primerW - 28, 3);
+    for (let i = 0; i < primerLines.length; i++) {
+      ctx.fillText(primerLines[i], x + 14, primerY + 51 + i * 11);
+    }
+  });
+
+  ctx.fillStyle = "rgba(126, 220, 255, 0.88)";
+  ctx.font = "700 11px 'Barlow Condensed', 'Trebuchet MS', sans-serif";
+  ctx.fillText("AIRFRAME SELECTION", panelX + 24, panelY + 224);
 
   menuAirframeHitboxes.length = 0;
-  const cardY = panelY + 144;
+  const cardY = panelY + 236;
   const cardW = 292;
   const cardH = 116;
   const gap = 20;
@@ -3639,7 +3628,7 @@ function drawMenuOverlay() {
     menuAirframeHitboxes.push({ id, x, y, w: cardW, h: cardH });
   });
 
-  const controlsY = panelY + 268;
+  const controlsY = panelY + 360;
   const controlsH = 32;
   ctx.fillStyle = "rgba(6, 19, 31, 0.34)";
   ctx.beginPath();

@@ -345,6 +345,18 @@
     return descriptors[Math.max(0, Math.min(descriptors.length - 1, phase - 1))];
   }
 
+  function getBossPhaseThreatHint(boss, phase = boss?.phase || 1) {
+    const variant = boss?.variant || "kongo";
+    if (variant === "yamato") {
+      if (phase === 1) return "Wide fan spread. Stay mobile and avoid the center lane.";
+      if (phase === 2) return "Alternating broadsides. Read the firing side before cutting across.";
+      return "Heavy centerline shells. Leave space for the straight-down barrage.";
+    }
+    if (phase === 1) return "Three-gun ranging shots. Weave early rather than reacting late.";
+    if (phase === 2) return "Side volleys cross the lane. Drift away from the active broadside.";
+    return "Heavy salvo mix. Expect a fast center shell plus outer pressure.";
+  }
+
   function getTheatreIntelBrief(stage, inBossFight = false) {
     const theatreIntel = getStageDefinition(stage).theatreIntel;
     return {
@@ -397,6 +409,278 @@
     return BOSS_VARIANTS[variant]?.shipSpriteKey || BOSS_VARIANTS.kongo.shipSpriteKey;
   }
 
+  function getAirFirePlan(stage, { elite = false, volleyToggle = false } = {}) {
+    const stageDef = getStageDefinition(stage);
+    if (stageDef.advancedAirPattern) {
+      if (elite) {
+        return {
+          salvos: [
+            {
+              mode: "direct",
+              shots: [
+                { sourceKey: "center", offsetX: -4, aimOffset: -56, vy: 224, size: 5, kind: "elite" },
+                { sourceKey: "center", offsetY: -1, aimOffset: 0, vy: 240, size: 6, kind: "elite" },
+                { sourceKey: "center", offsetX: 4, aimOffset: 56, vy: 224, size: 5, kind: "elite" },
+              ],
+            },
+          ],
+          cooldownRange: [0.16, 0.24],
+          nextState: { volleyToggle: !volleyToggle },
+        };
+      }
+      if (volleyToggle) {
+        return {
+          salvos: [
+            {
+              mode: "direct",
+              shots: [
+                { sourceKey: "center", offsetX: -5, aimOffset: -18, vy: 228, size: 5, kind: "enemy" },
+                { sourceKey: "center", offsetX: 5, aimOffset: 18, vy: 228, size: 5, kind: "enemy" },
+              ],
+            },
+          ],
+          cooldownRange: [0.24, 0.32],
+          nextState: { volleyToggle: !volleyToggle },
+        };
+      }
+      return {
+        salvos: [
+          {
+            mode: "direct",
+            shots: [{ sourceKey: "center", aimOffset: 0, vyRange: [236, 248], size: 5, kind: "enemy" }],
+          },
+        ],
+        cooldownRange: [0.2, 0.27],
+        nextState: { volleyToggle: !volleyToggle },
+      };
+    }
+
+    return {
+      salvos: [
+        {
+          mode: "direct",
+          shots: [{ sourceKey: "center", aimOffset: 0, vyRange: [215, 243], size: 5, kind: elite ? "elite" : "enemy" }],
+        },
+      ],
+      cooldownRange: elite ? [0.2, 0.34] : [0.31, 0.5],
+      nextState: {},
+    };
+  }
+
+  function getShipBossFirePlan(variant, { phase = 1, broadsideSide = "left", specialVolleyToggle = false, heavyVolleyToggle = false } = {}) {
+    const vs = BOSS_VARIANTS[variant]?.stats?.shipVolleyScale ?? 1;
+    if (variant === "yamato") {
+      if (phase === 1) {
+        return {
+          salvos: [
+            {
+              mode: "fan",
+              sourceKey: "mid",
+              offsetX: -3,
+              kind: "boss",
+              patterns: [
+                { vx: -132, vy: 214, size: 5 },
+                { vx: -74, vy: 228, size: 6 },
+                { vx: 0, vy: 248, size: 8 },
+                { vx: 74, vy: 228, size: 6 },
+                { vx: 132, vy: 214, size: 5 },
+              ],
+            },
+          ],
+          cooldown: 0.52 * vs,
+          nextState: {},
+        };
+      }
+      if (phase === 2) {
+        const firingLeft = broadsideSide !== "right";
+        const sourceKey = firingLeft ? "left" : "right";
+        const spreadDir = firingLeft ? -1 : 1;
+        return {
+          salvos: [
+            {
+              mode: "fan",
+              sourceKey,
+              offsetX: -3,
+              kind: "boss",
+              patterns: [
+                { vx: 18 * spreadDir, vy: 232, size: 5 },
+                { vx: 54 * spreadDir, vy: 244, size: 6 },
+                { vx: 92 * spreadDir, vy: 254, size: 6 },
+                { vx: 136 * spreadDir, vy: 264, size: 7 },
+              ],
+            },
+            {
+              mode: "fan",
+              sourceKey: "mid",
+              offsetX: -3,
+              offsetY: -2,
+              kind: "boss",
+              patterns: [
+                { vx: -40 * spreadDir, vy: 248, size: 6 },
+                { vx: 0, vy: 274, size: 7 },
+                { vx: 40 * spreadDir, vy: 248, size: 6 },
+              ],
+            },
+          ],
+          cooldown: 0.46 * vs,
+          nextState: { broadsideSide: firingLeft ? "right" : "left" },
+        };
+      }
+      if (specialVolleyToggle) {
+        return {
+          salvos: [
+            {
+              mode: "fan",
+              sourceKey: "mid",
+              offsetX: -3,
+              offsetY: -3,
+              kind: "boss",
+              patterns: [
+                { vx: -168, vy: 214, size: 5 },
+                { vx: -120, vy: 228, size: 5 },
+                { vx: -72, vy: 244, size: 6 },
+                { vx: -24, vy: 264, size: 7 },
+                { vx: 24, vy: 264, size: 7 },
+                { vx: 72, vy: 244, size: 6 },
+                { vx: 120, vy: 228, size: 5 },
+                { vx: 168, vy: 214, size: 5 },
+              ],
+            },
+          ],
+          cooldown: 0.44 * vs,
+          nextState: { specialVolleyToggle: !specialVolleyToggle },
+        };
+      }
+      return {
+        salvos: [
+          {
+            mode: "fan",
+            sourceKey: "left",
+            offsetX: -3,
+            kind: "boss",
+            patterns: [
+              { vx: -152, vy: 232, size: 5 },
+              { vx: -98, vy: 246, size: 6 },
+              { vx: -44, vy: 260, size: 6 },
+            ],
+          },
+          {
+            mode: "fan",
+            sourceKey: "mid",
+            offsetX: -3,
+            offsetY: -4,
+            kind: "boss",
+            patterns: [
+              { vx: 0, vy: 316, size: 10 },
+              { vx: -36, vy: 282, size: 7 },
+              { vx: 36, vy: 282, size: 7 },
+            ],
+          },
+          {
+            mode: "fan",
+            sourceKey: "right",
+            offsetX: -3,
+            kind: "boss",
+            patterns: [
+              { vx: 44, vy: 260, size: 6 },
+              { vx: 98, vy: 246, size: 6 },
+              { vx: 152, vy: 232, size: 5 },
+            ],
+          },
+        ],
+        cooldown: 0.48 * vs,
+        nextState: { specialVolleyToggle: !specialVolleyToggle },
+      };
+    }
+
+    if (phase === 1) {
+      return {
+        salvos: [
+          {
+            mode: "direct",
+            shots: [
+              { sourceKey: "left", offsetX: -3, vx: -58, vy: 228, size: 6, kind: "boss" },
+              { sourceKey: "mid", offsetX: -3, vx: 0, vy: 244, size: 7, kind: "boss" },
+              { sourceKey: "right", offsetX: -3, vx: 58, vy: 228, size: 6, kind: "boss" },
+            ],
+          },
+        ],
+        cooldown: 0.72 * vs,
+        nextState: {},
+      };
+    }
+    if (phase === 2) {
+      const firingLeft = broadsideSide !== "right";
+      const sourceKey = firingLeft ? "left" : "right";
+      const spreadDir = firingLeft ? -1 : 1;
+      return {
+        salvos: [
+          {
+            mode: "direct",
+            shots: [
+              { sourceKey, offsetX: -3, vx: 20 * spreadDir, vy: 236, size: 6, kind: "boss" },
+              { sourceKey, offsetX: -3, vx: 62 * spreadDir, vy: 248, size: 7, kind: "boss" },
+              { sourceKey, offsetX: -3, vx: 108 * spreadDir, vy: 258, size: 7, kind: "boss" },
+              { sourceKey: "mid", offsetX: -3, vx: 26 * spreadDir, vy: 242, size: 6, kind: "boss" },
+            ],
+          },
+        ],
+        cooldown: 0.6 * vs,
+        nextState: { broadsideSide: firingLeft ? "right" : "left" },
+      };
+    }
+    if (heavyVolleyToggle) {
+      return {
+        salvos: [
+          {
+            mode: "direct",
+            shots: [
+              { sourceKey: "mid", offsetX: -4, offsetY: -2, vx: 0, vy: 300, size: 10, kind: "boss" },
+              { sourceKey: "left", offsetX: -3, vx: -58, vy: 248, size: 6, kind: "boss" },
+              { sourceKey: "right", offsetX: -3, vx: 58, vy: 248, size: 6, kind: "boss" },
+            ],
+          },
+        ],
+        cooldown: 0.5 * vs,
+        nextState: { heavyVolleyToggle: !heavyVolleyToggle },
+      };
+    }
+    return {
+      salvos: [
+        {
+          mode: "direct",
+          shots: [
+            { sourceKey: "left", offsetX: -3, vx: -126, vy: 238, size: 6, kind: "boss" },
+            { sourceKey: "left", offsetX: -3, vx: -72, vy: 250, size: 6, kind: "boss" },
+            { sourceKey: "mid", offsetX: -3, vx: -28, vy: 266, size: 7, kind: "boss" },
+            { sourceKey: "mid", offsetX: -3, vx: 28, vy: 266, size: 7, kind: "boss" },
+            { sourceKey: "right", offsetX: -3, vx: 72, vy: 250, size: 6, kind: "boss" },
+            { sourceKey: "right", offsetX: -3, vx: 126, vy: 238, size: 6, kind: "boss" },
+          ],
+        },
+      ],
+      cooldown: 0.56 * vs,
+      nextState: { heavyVolleyToggle: !heavyVolleyToggle },
+    };
+  }
+
+  function getAirBossFirePlan() {
+    return {
+      salvos: [
+        {
+          mode: "direct",
+          shots: [
+            { sourceKey: "center", offsetX: -3, vx: -90, vy: 245, size: 7, kind: "boss" },
+            { sourceKey: "center", offsetX: -3, vx: 0, vy: 260, size: 7, kind: "boss" },
+            { sourceKey: "center", offsetX: -3, vx: 90, vy: 245, size: 7, kind: "boss" },
+          ],
+        },
+      ],
+      cooldown: 0.68,
+      nextState: {},
+    };
+  }
+
   window.GameContent = {
     AIRFRAMES,
     STAGE_COUNT,
@@ -415,6 +699,7 @@
     getStageLoadout,
     getStageStartScore,
     getBossPhaseDescriptor,
+    getBossPhaseThreatHint,
     getStageDefinition,
     getTheatreIntelBrief,
     pickNormalEnemyModel,
@@ -424,5 +709,8 @@
     getStageBackgroundFill,
     getAircraftSpriteKeys,
     getShipSpriteKey,
+    getAirFirePlan,
+    getShipBossFirePlan,
+    getAirBossFirePlan,
   };
 })();

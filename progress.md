@@ -230,6 +230,10 @@ TODO / suggestions for next agent:
   - Expanded `js/game-content.js` with `STAGE_DEFS`, `BOSS_VARIANTS`, and `AIRCRAFT_MODELS` so stage pacing, labels, warning copy, sprite preferences, boss stats, and stage presentation live in config instead of scattered `state.stage >= 2/3` branches.
   - Updated `game.js` to read stage enemy model pools, boss stats, result-band labels, warning themes, and sprite resolution from config helpers.
   - Goal of this pass: make future stage additions or balance passes mostly content edits rather than gameplay-file branch edits.
+- Fire-pattern config pass:
+  - Added config helpers in `js/game-content.js` for regular air fire, ship-boss fire phases, and air-boss fire plans.
+  - Replaced the large enemy/boss projectile branching block in `game.js` with a generic `executeFirePlan(...)` interpreter plus config-driven cooldown/state updates.
+  - Intent: future bullet pattern tuning should mostly be data edits in content config instead of rewriting gameplay conditionals.
   - shortened shield lockout window from 0.26s to 0.18s
   - slowed boss patrol speed from 26 to 18
   - lengthened ship-phase firing cooldowns so each attack pattern has more dodge/recovery space
@@ -394,3 +398,7 @@ TODO / suggestions for next agent:
   - On top of the sprite, three tiny rivet highlight dots (nose + wing roots) provide a very understated metallic shimmer with a slow, low-amplitude ambient flicker.
   - Overall effect: armor reads as "this airframe is reinforced" rather than "floating panels are attached to it".
   - Validation: `node --check game.js` passed; lints clean; browser paused-gameplay screenshot at `http://127.0.0.1:8090/index.html?cb=armorv2a` confirmed edge glow behind the sprite, rivet dots on top, segmented HUD `Armor 2/2` intact, and no new console errors.
+- New-player readability pass (`game.js` / `js/game-content.js`):
+  - Expanded the menu sortie briefing with three primer cards covering survival, missile timing, and upgrade decision-making.
+  - Added a first-upgrade micro-tip so the first refit screen gives one sentence of guidance without turning into a tutorial wall.
+  - Extended the boss phase banner with a threat hint line sourced from content config, so phase transitions now explain what changed in the attack pattern.
