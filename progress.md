@@ -362,3 +362,23 @@ TODO / suggestions for next agent:
   - Footer control hint in `index.html` documents **Pause: P or Esc**; script cache query bumped (`game.js?v=202604048`) for reload freshness.
   - Reference capture: `output/pause-screen.png` (full page, paused mid-sortie).
   - Validation: `node --check game.js` passed after the pause changes.
+- Armor defense pass (`game.js` / `styles.css` / `index.html`):
+  - Added a dedicated player armor layer (`player.armor`, `playerMaxArmor`, `playerArmorInvulnDuration`) that sits between shield and lives. Hits now resolve in order: shield -> armor -> life.
+  - Tuned the P-51D into the heavier strike frame with `armorCapBonus: 1`; dossier copy and stat summary now clearly communicate the extra plating identity.
+  - Added `Armor Belt` to the inter-stage run-upgrade pool: grants +1 armor cap and extends the post-break recovery window.
+  - Tactical feed augments now surface `Armor x/y` alongside shield/missile/run-upgrade pills; player render adds a soft armor halo when plating remains.
+  - `render_game_to_text` now includes `player.armor`, `player.armorCap`, and `combatProfile.armorInvulnDuration` for automation/debug visibility.
+  - Fixed a runtime init-order regression introduced during the pass by moving `PLAYER_INVULN_DURATION` above the initial `state` construction, restoring clean startup.
+  - Validation: `node --check game.js` passed; IDE lints were clean; browser check at `http://127.0.0.1:8090/index.html?cb=armorpass3` confirmed the updated P-51D armor messaging and no new console errors on load/start.
+- Armor visual rework (`game.js` / `styles.css` / `index.html`):
+  - Replaced the old circular armor halo with localized plate modules and a light segmented outline around the player airframe.
+  - Armor hits now emit deflection sparks plus small metallic shard fragments instead of reading like a shield pulse.
+  - Tactical feed armor UI now renders segmented blocks plus `x/y` count (for example `Armor [ ][ ] 2/2`) and remains visible even when depleted.
+  - Cache-busted both `styles.css` and `game.js` to ensure the refreshed armor presentation loads immediately in browser.
+  - Validation: `node --check game.js` passed; lints stayed clean; browser pass at `http://127.0.0.1:8090/index.html?cb=armorvisual1` confirmed the segmented armor HUD, updated player silhouette treatment, armor depletion to `0/2`, and no new console errors.
+- Armor visual v2 — edge-light + rivet pass (`game.js` / `index.html`):
+  - Removed floating armor rectangles, geometric outline, and sine-wave pulse.
+  - Armor now renders as a subtle metallic edge glow drawn **behind** the aircraft sprite, tracing the aircraft silhouette (nose → wings → tail). Opacity and shadow blur scale with remaining armor ratio.
+  - On top of the sprite, three tiny rivet highlight dots (nose + wing roots) provide a very understated metallic shimmer with a slow, low-amplitude ambient flicker.
+  - Overall effect: armor reads as "this airframe is reinforced" rather than "floating panels are attached to it".
+  - Validation: `node --check game.js` passed; lints clean; browser paused-gameplay screenshot at `http://127.0.0.1:8090/index.html?cb=armorv2a` confirmed edge glow behind the sprite, rivet dots on top, segmented HUD `Armor 2/2` intact, and no new console errors.

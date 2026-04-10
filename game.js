@@ -46,21 +46,23 @@ const debugFlags = new URLSearchParams(window.location.search);
 const AIRFRAMES = {
   p51d: {
     id: "p51d",
-    assetPath: "./assets/aircraft/player/usa/P-51D-removebg-preview.png?v=20260401a",
+    assetPath: "./assets/aircraft/player/usa/P-51D-removebg-preview.png?v=20260409c",
+    armoredAssetPath: "./assets/aircraft/player/usa/P-51D-armored-removebg-preview.png?v=20260409c",
     title: "P-51D Mustang",
     meta: "USN / Long-Range Strike",
     shortCode: "01",
     dossierTag: "Strike Package",
     dossierBody: [
-      "Long-range escort tuned for repeated missile re-attack windows.",
-      "Keeps pressure on large contacts without slowing the sortie pace.",
+      "Long-range escort tuned for repeated missile re-attack windows and heavier plating.",
+      "Carries one extra armor plate so recovery windows stay forgiving under pressure.",
     ],
-    statSummary: "Faster missile recycle // spread pickups hold longer",
+    statSummary: "Extra armor plate // faster missile recycle",
     combatProfile: {
       speedScale: 1,
       fireRateScale: 1,
       missileCooldownScale: 0.88,
       shieldCapBonus: 0,
+      armorCapBonus: 1,
       spreadDurationBonus: 0.8,
     },
   },
@@ -81,6 +83,7 @@ const AIRFRAMES = {
       fireRateScale: 0.94,
       missileCooldownScale: 1.06,
       shieldCapBonus: 0,
+      armorCapBonus: 0,
       spreadDurationBonus: 0,
     },
   },
@@ -148,6 +151,17 @@ playerImage.addEventListener("load", () => {
   if (canRender) render();
 });
 
+const playerArmoredImage = new Image();
+let playerArmoredSpriteCanvas = null;
+let playerArmoredSpriteReady = false;
+playerArmoredImage.addEventListener("load", () => {
+  const offscreen = buildSpriteCanvas(playerArmoredImage);
+  if (!offscreen) return;
+  playerArmoredSpriteCanvas = offscreen;
+  playerArmoredSpriteReady = true;
+  if (canRender) render();
+});
+
 for (const airframe of Object.values(AIRFRAMES)) {
   airframe.previewImage = new Image();
   airframe.previewCanvas = null;
@@ -167,6 +181,11 @@ function loadSelectedAirframe() {
   playerSpriteReady = false;
   playerSpriteCanvas = null;
   playerImage.src = airframe.assetPath;
+  playerArmoredSpriteReady = false;
+  playerArmoredSpriteCanvas = null;
+  if (airframe.armoredAssetPath) {
+    playerArmoredImage.src = airframe.armoredAssetPath;
+  }
   applyCombatProfile();
   invalidateUiCaches();
   syncAirframeDossier();
@@ -575,8 +594,11 @@ const BASE_PLAYER_STATS = {
   spreadFireInterval: 0.13,
   missileCooldown: 1.6,
   maxShield: 3,
+  maxArmor: 1,
   spreadDuration: 7.5,
 };
+// Short i-frame/buffer after taking a hit to prevent rapid consecutive damage.
+const PLAYER_INVULN_DURATION = 0.22;
 
 function createDefaultRunBonuses() {
   return {
@@ -584,6 +606,8 @@ function createDefaultRunBonuses() {
     fireRateScale: 1,
     missileCooldownScale: 1,
     shieldCapBonus: 0,
+    armorCapBonus: 0,
+    armorInvulnBonus: 0,
     spreadDurationBonus: 0,
   };
 }
@@ -630,6 +654,17 @@ const RUN_UPGRADE_POOL = [
     },
   },
   {
+    id: "armor-belt",
+    label: "Armor Belt",
+    shortLabel: "Armor Belt",
+    description: "Adds a sacrificial armor plate and extends the recovery window after the plating breaks.",
+    statLine: "+1 armor and +0.16s guard",
+    apply() {
+      state.runBonuses.armorCapBonus += 1;
+      state.runBonuses.armorInvulnBonus += 0.16;
+    },
+  },
+  {
     id: "wide-salvo",
     label: "Wide Salvo",
     shortLabel: "Wide Salvo",
@@ -661,6 +696,8 @@ function getCombinedCombatProfile() {
     missileCooldown:
       BASE_PLAYER_STATS.missileCooldown * airframeProfile.missileCooldownScale * runBonuses.missileCooldownScale,
     maxShield: BASE_PLAYER_STATS.maxShield + airframeProfile.shieldCapBonus + runBonuses.shieldCapBonus,
+    maxArmor: BASE_PLAYER_STATS.maxArmor + (airframeProfile.armorCapBonus || 0) + runBonuses.armorCapBonus,
+    armorInvulnDuration: PLAYER_INVULN_DURATION + (runBonuses.armorInvulnBonus || 0),
     spreadDuration:
       BASE_PLAYER_STATS.spreadDuration + airframeProfile.spreadDurationBonus + runBonuses.spreadDurationBonus,
   };
@@ -674,8 +711,11 @@ function applyCombatProfile() {
   state.spreadFireInterval = profile.spreadFireInterval;
   state.missileCooldownDuration = profile.missileCooldown;
   state.playerMaxShield = profile.maxShield;
+  state.playerMaxArmor = profile.maxArmor;
+  state.playerArmorInvulnDuration = profile.armorInvulnDuration;
   state.playerSpreadDuration = profile.spreadDuration;
   state.player.shield = Math.min(state.player.shield, state.playerMaxShield);
+  state.player.armor = Math.min(state.player.armor, state.playerMaxArmor);
   return profile;
 }
 
@@ -728,6 +768,9 @@ function applyRunUpgrade(choice) {
   applyCombatProfile();
   if (choice.id === "shield-relay") {
     state.player.shield = Math.min(state.playerMaxShield, state.player.shield + 1);
+  }
+  if (choice.id === "armor-belt") {
+    state.player.armor = Math.min(state.playerMaxArmor, state.player.armor + 1);
   }
 }
 
@@ -835,6 +878,7 @@ const state = {
     vx: 0,
     vy: 0,
     shield: 0,
+    armor: BASE_PLAYER_STATS.maxArmor,
     invulnTimer: 0,
     spreadTimer: 0,
   },
@@ -850,6 +894,8 @@ const state = {
   missileCooldown: 0,
   missileCooldownDuration: BASE_PLAYER_STATS.missileCooldown,
   playerMaxShield: BASE_PLAYER_STATS.maxShield,
+  playerMaxArmor: BASE_PLAYER_STATS.maxArmor,
+  playerArmorInvulnDuration: PLAYER_INVULN_DURATION,
   playerSpreadDuration: BASE_PLAYER_STATS.spreadDuration,
   activeBoss: null,
   paused: false,
@@ -883,8 +929,6 @@ const SPRITE_SCALE = {
 // Missile tuning constants.
 const MISSILE_TRAIL_POINTS = 14;
 const MISSILE_TRAIL_SEGMENTS = 6;
-// Short i-frame/buffer after taking a hit to prevent rapid連鎖 damage.
-const PLAYER_INVULN_DURATION = 0.22;
 /** Vertical limits for player center `y` (hitbox is centered on y). */
 const PLAYER_MOVE_MARGIN_TOP = 118;
 const PLAYER_MOVE_MARGIN_BOTTOM = 42;
@@ -972,7 +1016,22 @@ const shockwavePool = [];
 const muzzleFlashPool = [];
 
 function obtainExplosion() {
-  return explosionPool.pop() || { x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, size: 0, color: "#fff" };
+  return (
+    explosionPool.pop() || {
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      life: 0,
+      maxLife: 0,
+      size: 0,
+      color: "#fff",
+      kind: "burst",
+      angle: 0,
+      spin: 0,
+      stretch: 1,
+    }
+  );
 }
 
 function releaseExplosion(p) {
@@ -1106,6 +1165,7 @@ function startStageCheckpoint(stageOverride = 1, { preserveRunBonuses = false } 
   state.player.vx = 0;
   state.player.vy = 0;
   state.player.shield = preserveRunBonuses && state.playerMaxShield > BASE_PLAYER_STATS.maxShield ? 1 : 0;
+  state.player.armor = state.playerMaxArmor;
   state.player.invulnTimer = 1.05;
   state.player.spreadTimer = 0;
   state.bullets.length = 0;
@@ -1186,6 +1246,7 @@ function returnToMenu() {
   state.player.vx = 0;
   state.player.vy = 0;
   state.player.shield = 0;
+  state.player.armor = state.playerMaxArmor;
   state.player.invulnTimer = 0;
   state.player.spreadTimer = 0;
   state.bullets.length = 0;
@@ -1350,7 +1411,7 @@ function syncTacticalIntelPanel(nowMs = performance.now(), force = false) {
     if (tacticalIntelAugmentsEl) {
       const spreadLabel = state.player.spreadTimer > 0 ? state.player.spreadTimer.toFixed(1) : "0.0";
       const missileLabel = state.missileCooldown > 0 ? state.missileCooldown.toFixed(1) : "ready";
-      const augmentSig = `${selectedAirframeId}|${state.player.shield}|${spreadLabel}|${missileLabel}|${state.runUpgradeHistory.join(",")}`;
+      const augmentSig = `${selectedAirframeId}|${state.player.shield}|${state.player.armor}|${state.playerMaxArmor}|${spreadLabel}|${missileLabel}|${state.runUpgradeHistory.join(",")}`;
       if (augmentSig !== uiSyncCache.augmentSig) {
         uiSyncCache.augmentSig = augmentSig;
         tacticalIntelAugmentsEl.replaceChildren();
@@ -1363,6 +1424,28 @@ function syncTacticalIntelPanel(nowMs = performance.now(), force = false) {
           shield.className = "tactical-intel__pill tactical-intel__pill--shield";
           shield.textContent = `Shield ${state.player.shield}/${state.playerMaxShield}`;
           tacticalIntelAugmentsEl.appendChild(shield);
+        }
+        if (state.playerMaxArmor > 0) {
+          const armor = document.createElement("span");
+          armor.className = "tactical-intel__pill tactical-intel__pill--armor";
+          const armorLabel = document.createElement("span");
+          armorLabel.className = "tactical-intel__armor-label";
+          armorLabel.textContent = "Armor";
+          armor.appendChild(armorLabel);
+          const armorSegments = document.createElement("span");
+          armorSegments.className = "tactical-intel__armor-segments";
+          for (let i = 0; i < state.playerMaxArmor; i++) {
+            const segment = document.createElement("span");
+            segment.className = "tactical-intel__armor-segment";
+            if (i < state.player.armor) segment.classList.add("is-filled");
+            armorSegments.appendChild(segment);
+          }
+          armor.appendChild(armorSegments);
+          const armorValue = document.createElement("span");
+          armorValue.className = "tactical-intel__armor-value";
+          armorValue.textContent = `${state.player.armor}/${state.playerMaxArmor}`;
+          armor.appendChild(armorValue);
+          tacticalIntelAugmentsEl.appendChild(armor);
         }
         if (state.player.spreadTimer > 0) {
           const spread = document.createElement("span");
@@ -1446,6 +1529,10 @@ function createExplosion(x, y, color = "#ffd56c", count = 14) {
     p.maxLife = life;
     p.size = 3 + Math.random() * 4.8;
     p.color = color;
+    p.kind = "burst";
+    p.angle = 0;
+    p.spin = 0;
+    p.stretch = 1;
     state.explosions.push(p);
     effectSpawnBudget.explosions += 1;
   }
@@ -1464,8 +1551,67 @@ function createExplosion(x, y, color = "#ffd56c", count = 14) {
   core.maxLife = 0.24;
   core.size = 14;
   core.color = "#fff0bc";
+  core.kind = "burst";
+  core.angle = 0;
+  core.spin = 0;
+  core.stretch = 1;
   state.explosions.push(core);
   effectSpawnBudget.explosions += 1;
+}
+
+function createArmorDeflectBurst(x, y, impactVx = 0, impactVy = 1) {
+  const norm = Math.hypot(impactVx, impactVy) || 1;
+  const dirX = impactVx / norm;
+  const dirY = impactVy / norm;
+  const tangentX = -dirY;
+  const tangentY = dirX;
+  const sparkCount = 7;
+  const roomByCount = Math.max(0, PERFORMANCE_CAPS.explosionParticlesMax - state.explosions.length);
+  const roomByFrame = Math.max(0, PERFORMANCE_CAPS.explosionParticlesPerFrame - effectSpawnBudget.explosions);
+  const spawnCount = Math.min(sparkCount, roomByCount, roomByFrame);
+  for (let i = 0; i < spawnCount; i++) {
+    const spark = obtainExplosion();
+    const spread = (Math.random() - 0.5) * 1.8;
+    const speed = 120 + Math.random() * 120;
+    spark.x = x + tangentX * spread * 4;
+    spark.y = y + tangentY * spread * 4;
+    spark.vx = tangentX * speed + dirX * (18 + Math.random() * 30);
+    spark.vy = tangentY * speed + dirY * (18 + Math.random() * 30);
+    spark.life = 0.11 + Math.random() * 0.08;
+    spark.maxLife = spark.life;
+    spark.size = 5 + Math.random() * 4;
+    spark.color = i < 2 ? "#f7fbff" : "#bed1e4";
+    spark.kind = "spark";
+    spark.angle = Math.atan2(spark.vy, spark.vx);
+    spark.spin = 0;
+    spark.stretch = 1.8 + Math.random() * 0.9;
+    state.explosions.push(spark);
+    effectSpawnBudget.explosions += 1;
+  }
+
+  const shardCount = 5;
+  const shardRoomByCount = Math.max(0, PERFORMANCE_CAPS.explosionParticlesMax - state.explosions.length);
+  const shardRoomByFrame = Math.max(0, PERFORMANCE_CAPS.explosionParticlesPerFrame - effectSpawnBudget.explosions);
+  const shardSpawnCount = Math.min(shardCount, shardRoomByCount, shardRoomByFrame);
+  for (let i = 0; i < shardSpawnCount; i++) {
+    const shard = obtainExplosion();
+    const launch = Math.random() * Math.PI * 2;
+    const speed = 55 + Math.random() * 90;
+    shard.x = x + Math.cos(launch) * (2 + Math.random() * 4);
+    shard.y = y + Math.sin(launch) * (2 + Math.random() * 4);
+    shard.vx = Math.cos(launch) * speed - dirX * (20 + Math.random() * 24);
+    shard.vy = Math.sin(launch) * speed - dirY * (10 + Math.random() * 22);
+    shard.life = 0.28 + Math.random() * 0.18;
+    shard.maxLife = shard.life;
+    shard.size = 4 + Math.random() * 3.5;
+    shard.color = i % 2 === 0 ? "#d8e2ec" : "#9fb2c7";
+    shard.kind = "armor-shard";
+    shard.angle = launch;
+    shard.spin = (Math.random() - 0.5) * 9;
+    shard.stretch = 0.8 + Math.random() * 0.35;
+    state.explosions.push(shard);
+    effectSpawnBudget.explosions += 1;
+  }
 }
 
 function createShockwave(x, y, color = "#ffe08e") {
@@ -1975,6 +2121,17 @@ function damagePlayer(x, y, color = "#ff9a7d") {
     state.hitStop = 0.05;
     return false;
   }
+  if (state.player.armor > 0) {
+    state.player.armor -= 1;
+    const armorHitVx = x - state.player.x;
+    const armorHitVy = y - state.player.y;
+    createExplosion(x, y, "#dce8f4", 16);
+    createArmorDeflectBurst(x, y, armorHitVx, armorHitVy);
+    createShockwave(x, y, "#c3d6ea");
+    state.player.invulnTimer = state.playerArmorInvulnDuration;
+    state.hitStop = 0.06;
+    return false;
+  }
   createExplosion(x, y, color, 18);
   createShockwave(x, y, color === "#ff9a7d" ? "#ffb69d" : "#ffcaa0");
   state.player.invulnTimer = PLAYER_INVULN_DURATION;
@@ -2307,6 +2464,7 @@ function updateEffectsAndCleanup(dt) {
     p.y += p.vy * dt;
     p.vx *= 0.94;
     p.vy *= 0.94;
+    p.angle += (p.spin || 0) * dt;
     p.life -= dt;
   }
   for (const w of state.shockwaves) {
@@ -2684,8 +2842,11 @@ function drawPlayer() {
     return;
   }
 
+  const useArmored = p.armor > 0 && playerArmoredSpriteReady && playerArmoredSpriteCanvas;
+  const sprite = useArmored ? playerArmoredSpriteCanvas : playerSpriteCanvas;
+
   const drawHeight = SPRITE_SCALE.playerHeight;
-  const aspect = playerSpriteCanvas.width / playerSpriteCanvas.height;
+  const aspect = sprite.width / sprite.height;
   const drawWidth = drawHeight * aspect;
 
   ctx.save();
@@ -2693,9 +2854,7 @@ function drawPlayer() {
   const drawCy = snapRenderCoord(p.y - 1);
   ctx.translate(drawCx, drawCy);
 
-  // Player tail shadow disabled by request.
-
-  ctx.drawImage(playerSpriteCanvas, -drawWidth / 2, -drawHeight * 0.74, drawWidth, drawHeight);
+  ctx.drawImage(sprite, -drawWidth / 2, -drawHeight * 0.74, drawWidth, drawHeight);
   ctx.restore();
 }
 
@@ -4203,6 +4362,47 @@ function render() {
   for (const p of state.explosions) {
     const t = Math.max(0, p.life / p.maxLife);
     if (t <= 0) continue;
+    if (p.kind === "spark") {
+      const len = p.size * (1.3 + (p.stretch || 1));
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle || 0);
+      ctx.globalAlpha = t * 0.95;
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = Math.max(1, p.size * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(-len * 0.65, 0);
+      ctx.lineTo(len * 0.35, 0);
+      ctx.stroke();
+      ctx.globalAlpha = t * 0.55;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(1.4, p.size * 0.16), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      continue;
+    }
+    if (p.kind === "armor-shard") {
+      const shardW = p.size * (0.8 + (p.stretch || 1) * 0.4);
+      const shardH = p.size * 0.58;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle || 0);
+      ctx.globalAlpha = t * 0.9;
+      ctx.fillStyle = p.color;
+      ctx.strokeStyle = "rgba(245, 249, 252, 0.72)";
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(-shardW * 0.55, -shardH * 0.35);
+      ctx.lineTo(shardW * 0.15, -shardH * 0.55);
+      ctx.lineTo(shardW * 0.55, shardH * 0.05);
+      ctx.lineTo(-shardW * 0.2, shardH * 0.55);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
     const r = p.size * (0.7 + (1 - t) * 0.6);
     const sprite = getExplosionDot(p.color);
     ctx.globalAlpha = t;
@@ -4778,6 +4978,8 @@ function renderGameToText() {
       height: state.player.h,
       shield: state.player.shield,
       shieldCap: state.playerMaxShield,
+      armor: state.player.armor,
+      armorCap: state.playerMaxArmor,
       spreadTimer: Number(state.player.spreadTimer.toFixed(2)),
     },
     bullets: state.bullets.slice(0, 14).map((b) => ({ x: Number(b.x.toFixed(1)), y: Number(b.y.toFixed(1)), vx: Number((b.vx || 0).toFixed(1)) })),
@@ -4823,6 +5025,7 @@ function renderGameToText() {
       fireInterval: Number(combatProfile.fireInterval.toFixed(3)),
       spreadFireInterval: Number(combatProfile.spreadFireInterval.toFixed(3)),
       missileCooldown: Number(combatProfile.missileCooldown.toFixed(3)),
+      armorInvulnDuration: Number(combatProfile.armorInvulnDuration.toFixed(3)),
       spreadDuration: Number(combatProfile.spreadDuration.toFixed(2)),
     },
     runUpgrades: state.runUpgradeHistory.slice(),
