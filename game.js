@@ -46,8 +46,8 @@ const debugFlags = new URLSearchParams(window.location.search);
 const AIRFRAMES = {
   p51d: {
     id: "p51d",
-    assetPath: "./assets/aircraft/player/usa/P-51D-removebg-preview.png?v=20260409c",
-    armoredAssetPath: "./assets/aircraft/player/usa/P-51D-armored-removebg-preview.png?v=20260409c",
+    assetPath: "./assets/aircraft/player/usa/P-51D-removebg-preview.png?v=20260410c",
+    armoredAssetPath: "./assets/aircraft/player/usa/P-51D-armored-removebg-preview.png?v=20260410c",
     title: "P-51D Mustang",
     meta: "USN / Long-Range Strike",
     shortCode: "01",
@@ -2854,6 +2854,9 @@ function drawPlayer() {
   const drawCy = snapRenderCoord(p.y - 1);
   ctx.translate(drawCx, drawCy);
 
+  if (useArmored) {
+    ctx.filter = "contrast(1.08) saturate(1.12)";
+  }
   ctx.drawImage(sprite, -drawWidth / 2, -drawHeight * 0.74, drawWidth, drawHeight);
   ctx.restore();
 }
