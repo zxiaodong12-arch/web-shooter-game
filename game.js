@@ -1202,6 +1202,9 @@ function spawnEnemy(forceNormal = false) {
 function spawnBoss() {
   state.bossSpawned = true;
   const bossConfig = getBossConfig(state.stage);
+  const tier =
+    bossConfig.variant === "yamato" ? 3 : bossConfig.variant === "nagato" ? 2 : 1;
+  const volleyMul = bossConfig.shipVolleyScale ?? 1;
   const bossObj = {
     id: state.nextEnemyId++,
     x: -262,
@@ -1831,42 +1834,45 @@ function updateEnemies(dt) {
       }
       e.x = Math.max(8, Math.min(GAME_W - e.w - 8, e.x));
       e.shootCooldown -= dt;
-      if (e.shootCooldown <= 0 && !e.boss) {
-        const originMap = {
-          center: { x: e.x + e.w / 2 - 3, y: e.y + e.h - 4 },
-        };
-        const aim = (state.player.x - (e.x + e.w / 2)) * 0.18;
-        const firePlan = getAirFirePlan(state.stage, { elite: e.elite, volleyToggle: !!e.volleyToggle });
-        executeFirePlan(firePlan, originMap, aim);
-        e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.3);
-        if (firePlan.nextState) Object.assign(e, firePlan.nextState);
-      }
-      if (e.ship && e.shootCooldown <= 0 && !e.entering) {
-        const turretY = e.y + e.h - 6;
-        const originMap = {
-          left: { x: e.x + e.w * 0.22, y: turretY },
-          mid: { x: e.x + e.w * 0.5, y: turretY },
-          right: { x: e.x + e.w * 0.78, y: turretY },
-        };
-        const shipPhase = e.phase || getShipBossPhase(e);
-        const firePlan = getShipBossFirePlan(e.variant, {
-          phase: shipPhase,
-          broadsideSide: e.broadsideSide,
-          specialVolleyToggle: !!e.specialVolleyToggle,
-          heavyVolleyToggle: !!e.heavyVolleyToggle,
-        });
-        executeFirePlan(firePlan, originMap, 0);
-        e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.6);
-        if (firePlan.nextState) Object.assign(e, firePlan.nextState);
-      }
-      if (e.boss && !e.ship && e.shootCooldown <= 0) {
-        const firePlan = getAirBossFirePlan();
-        executeFirePlan(
-          firePlan,
-          { center: { x: e.x + e.w / 2, y: e.y + e.h - 8 } },
-          0
-        );
-        e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.68);
+      if (!Number.isFinite(e.shootCooldown)) e.shootCooldown = 0;
+      if (e.shootCooldown <= 0) {
+        // Surface combatants first so battleship volleys are never gated by the flyer branch.
+        if (e.ship && !e.entering) {
+          const turretY = e.y + e.h - 6;
+          const originMap = {
+            left: { x: e.x + e.w * 0.22, y: turretY },
+            mid: { x: e.x + e.w * 0.5, y: turretY },
+            right: { x: e.x + e.w * 0.78, y: turretY },
+            center: { x: e.x + e.w * 0.5, y: turretY },
+          };
+          const shipPhase = e.phase || getShipBossPhase(e);
+          const firePlan = getShipBossFirePlan(e.variant, {
+            phase: shipPhase,
+            broadsideSide: e.broadsideSide,
+            specialVolleyToggle: !!e.specialVolleyToggle,
+            heavyVolleyToggle: !!e.heavyVolleyToggle,
+          });
+          executeFirePlan(firePlan, originMap, 0);
+          e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.6);
+          if (firePlan.nextState) Object.assign(e, firePlan.nextState);
+        } else if (!e.boss) {
+          const originMap = {
+            center: { x: e.x + e.w / 2 - 3, y: e.y + e.h - 4 },
+          };
+          const aim = (state.player.x - (e.x + e.w / 2)) * 0.18;
+          const firePlan = getAirFirePlan(state.stage, { elite: e.elite, volleyToggle: !!e.volleyToggle });
+          executeFirePlan(firePlan, originMap, aim);
+          e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.3);
+          if (firePlan.nextState) Object.assign(e, firePlan.nextState);
+        } else if (e.boss && !e.ship) {
+          const firePlan = getAirBossFirePlan();
+          executeFirePlan(
+            firePlan,
+            { center: { x: e.x + e.w / 2, y: e.y + e.h - 8 } },
+            0
+          );
+          e.shootCooldown = rollPlanValue(firePlan.cooldownRange ?? firePlan.cooldown ?? 0.68);
+        }
       }
     } else {
       e.deathTimer -= dt;
